@@ -7,7 +7,8 @@ import uuid
 
 # --- Configuration ---
 CSV_PATH = "../data/demagog_vyroky_2026-01-25.csv"  # Replace with your actual CSV file path
-QDRANT_URL = "http://13.48.59.38:6333"  # Your remote Qdrant instance
+# QDRANT_URL = "http://13.48.59.38:6333"  # Your remote Qdrant instance
+QDRANT_URL = ":memory:"  # For local testing, replace with your remote URL when deploying
 COLLECTION_NAME = "politicke_vyroky_final_1"
 BATCH_SIZE = 32  # Adjust based on your GPU/RAM capacity
 
@@ -24,7 +25,10 @@ VECTOR_SIZE = 1024
 # 3. Initialize Remote Qdrant Client
 print(f"Connecting to Qdrant at {QDRANT_URL}...")
 # Added a timeout to prevent network drops during heavy batch uploads
-client = QdrantClient(url=QDRANT_URL, timeout=60.0)
+if QDRANT_URL == ":memory:":
+    client = QdrantClient(location=QDRANT_URL)
+else:
+    client = QdrantClient(url=QDRANT_URL, timeout=60.0)
 
 # Create collection if it doesn't exist
 if not client.collection_exists(COLLECTION_NAME):

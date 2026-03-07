@@ -12,36 +12,36 @@ QDRANT_URL = ":memory:"  # For local testing, replace with your remote URL when 
 COLLECTION_NAME = "politicke_vyroky_final_1"
 BATCH_SIZE = 32  # Adjust based on your GPU/RAM capacity
 
-def create_db():
-    
 # 1. Load the Data
-    print("Loading CSV...")
-    df = pd.read_csv(CSV_PATH, delimiter=';')
-    df = df.fillna("")
+print("Loading CSV...")
+df = pd.read_csv(CSV_PATH, delimiter=';')
+df = df.fillna("")
 
 # 2. Initialize the Embedding Model
-    print("Loading BAAI/bge-m3 model...")
-    model = SentenceTransformer('BAAI/bge-m3')
-    VECTOR_SIZE = 1024
+print("Loading BAAI/bge-m3 model...")
+model = SentenceTransformer('BAAI/bge-m3')
+VECTOR_SIZE = 1024
 
 # 3. Initialize Remote Qdrant Client
-    print(f"Connecting to Qdrant at {QDRANT_URL}...")
+print(f"Connecting to Qdrant at {QDRANT_URL}...")
 # Added a timeout to prevent network drops during heavy batch uploads
-    if QDRANT_URL == ":memory:":
-        client = QdrantClient(location=QDRANT_URL)
-    else:
-        client = QdrantClient(url=QDRANT_URL, timeout=60.0)
+if QDRANT_URL == ":memory:":
+    client = QdrantClient(location=QDRANT_URL)
+else:
+    client = QdrantClient(url=QDRANT_URL, timeout=60.0)
 
 # Create collection if it doesn't exist
-    if not client.collection_exists(COLLECTION_NAME):
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
-        )
-        print(f"Created new collection: {COLLECTION_NAME}")
-    else:
-        print(f"Collection '{COLLECTION_NAME}' already exists. Appending to it.")
+if not client.collection_exists(COLLECTION_NAME):
+    client.create_collection(
+        collection_name=COLLECTION_NAME,
+        vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE)
+    )
+    print(f"Created new collection: {COLLECTION_NAME}")
+else:
+    print(f"Collection '{COLLECTION_NAME}' already exists. Appending to it.")
 
+def create_db():
+    
 # 4. Embed and Upload in Batches
     print("Embedding and uploading data to Qdrant...")
     points = []

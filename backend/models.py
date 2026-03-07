@@ -20,6 +20,13 @@ class SearchResult(BaseModel):
     score: float
 
 
+class PaginatedSearchResults(BaseModel):
+    items: list[SearchResult]
+    total: int
+    page: int
+    page_size: int
+
+
 # --- Vyroky (statements) ---
 
 class VyrokCreate(BaseModel):

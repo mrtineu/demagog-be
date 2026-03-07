@@ -29,6 +29,13 @@ VERDICT_LABEL = {
     "Neoveriteľné": "NEOVERITEĽNÉ",
 }
 
+VERDICT_CORRECTNESS: dict[str, bool | None] = {
+    "Pravda": True,
+    "Nepravda": False,
+    "Zavádzajúce": False,
+    "Neoveriteľné": None,
+}
+
 # ── System prompt (copied verbatim from Client/verify.py) ──────────────
 
 SYSTEM_PROMPT = """\
@@ -285,6 +292,7 @@ def _build_result(
         status="zhoda" if llm_resp.get("zhoda") else "bez_zhody",
         verdikt=verdikt,
         verdikt_label=VERDICT_LABEL.get(verdikt, verdikt),
+        je_pravda=VERDICT_CORRECTNESS.get(verdikt),
         odovodnenie_llm=llm_resp.get("odovodnenie_llm", ""),
         zdrojovy_vyrok=llm_resp.get("zdrojovy_vyrok"),
         zdroj=zdroj,
@@ -305,6 +313,7 @@ def _build_no_data(
         status="bez_zhody",
         verdikt="Nedostatok dát",
         verdikt_label="NEDOSTATOK DÁT",
+        je_pravda=None,
         odovodnenie_llm=(
             f"Žiadny výsledok z databázy nepresiahol prah podobnosti {threshold}. "
             f"Najvyššie skóre: {top_score:.4f}."
@@ -337,12 +346,14 @@ def _build_research_response(research: dict, threshold: float | None) -> VerifyR
         status=research.get("status", "webovy_vyskum"),
         verdikt=research.get("verdikt", "Neoveriteľné"),
         verdikt_label=research.get("verdikt_label", ""),
+        je_pravda=VERDICT_CORRECTNESS.get(research.get("verdikt", "")),
         odovodnenie_llm=research.get("odovodnenie_llm", ""),
         zdrojovy_vyrok=None,
         zdroj=None,
         pouzity_prah=None,
         pocet_nad_prahom=0,
         pocet_celkom=0,
+        web_research_used=True,
         typ_overenia="webovy_vyskum",
         istota=research.get("istota"),
         webove_zdroje=web_sources if web_sources else None,
@@ -365,6 +376,7 @@ def _research_fallback(statement: str, threshold: float) -> VerifyResponse:
             status="bez_zhody",
             verdikt="Nedostatok dát",
             verdikt_label="NEDOSTATOK DÁT",
+            je_pravda=None,
             odovodnenie_llm=(
                 f"Databáza neobsahuje zhodu a webový výskum zlyhal: {exc}"
             ),
@@ -403,6 +415,7 @@ def verify_statement(body: VerifyRequest):
             status="bez_zhody",
             verdikt="Nedostatok dát",
             verdikt_label="NEDOSTATOK DÁT",
+            je_pravda=None,
             odovodnenie_llm=reason,
             zdrojovy_vyrok=None,
             zdroj=None,

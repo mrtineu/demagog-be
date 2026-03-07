@@ -148,12 +148,14 @@ class VerifyResponse(BaseModel):
     status: str
     verdikt: str
     verdikt_label: str
+    je_pravda: bool | None  # True=Pravda, False=Nepravda/Zavádzajúce, None=Neoveriteľné/Nedostatok dát
     odovodnenie_llm: str
     zdrojovy_vyrok: str | None
     zdroj: VerifySource | None
     pouzity_prah: float | None
     pocet_nad_prahom: int
     pocet_celkom: int
+    web_research_used: bool = False  # True when Tavily web research was triggered
     # Web research fields (populated only when status == "webovy_vyskum")
     typ_overenia: str | None = None
     istota: str | None = None

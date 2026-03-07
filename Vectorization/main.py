@@ -6,7 +6,7 @@ from tqdm import tqdm
 import uuid
 
 # --- Configuration ---
-CSV_PATH = "demagog_vyroky_2026-01-25.csv"  # Replace with your actual CSV file path
+CSV_PATH = "../data/demagog_vyroky_2026-01-25.csv"  # Replace with your actual CSV file path
 QDRANT_URL = "http://13.48.59.38:6333"  # Your remote Qdrant instance
 COLLECTION_NAME = "politicke_vyroky_final_1"
 BATCH_SIZE = 32  # Adjust based on your GPU/RAM capacity

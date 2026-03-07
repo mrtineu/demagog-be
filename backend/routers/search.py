@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException
-from backend.models import SearchRequest, SearchResult
+from fastapi import APIRouter, HTTPException, Query
+from backend.models import SearchResult, PaginatedSearchResults
 from backend.qdrant_service import search_similar
 
 router = APIRouter(prefix="/api", tags=["search"])
@@ -12,14 +12,19 @@ VERDICT_LABEL = {
 }
 
 
-@router.post("/search", response_model=list[SearchResult])
-def search(req: SearchRequest):
+@router.get("/search", response_model=PaginatedSearchResults)
+def search(
+    query: str = Query(..., min_length=1),
+    top_k: int = Query(50, ge=1, le=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+):
     try:
-        results = search_similar(req.query, req.top_k)
+        results = search_similar(query, top_k)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Search service error: {e}")
 
-    return [
+    items = [
         SearchResult(
             vyrok=r["vyrok"],
             vyhodnotenie=r["vyhodnotenie"],
@@ -33,3 +38,9 @@ def search(req: SearchRequest):
         )
         for r in results
     ]
+
+    total = len(items)
+    start = (page - 1) * page_size
+    page_items = items[start : start + page_size]
+
+    return PaginatedSearchResults(items=page_items, total=total, page=page, page_size=page_size)

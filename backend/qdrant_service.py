@@ -1,5 +1,8 @@
+import uuid
+
 import requests
 from qdrant_client import QdrantClient
+from qdrant_client.models import PointStruct
 from backend.config import EC2_IP, QDRANT_PORT, INFINITY_PORT, COLLECTION_NAME, EMBEDDING_MODEL
 
 _qdrant_client: QdrantClient | None = None
@@ -46,3 +49,15 @@ def search_similar(query_text: str, top_k: int = 5) -> list[dict]:
             "politicka_strana": payload.get("Politická strana", ""),
         })
     return results
+
+
+def upsert_vyrok(payload: dict) -> None:
+    """Embed a statement and upsert it into Qdrant."""
+    vector = embed(payload["Výrok"])
+    point = PointStruct(
+        id=str(uuid.uuid4()),
+        vector=vector,
+        payload=payload,
+    )
+    client = get_qdrant_client()
+    client.upsert(collection_name=COLLECTION_NAME, points=[point])

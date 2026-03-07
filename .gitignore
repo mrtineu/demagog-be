@@ -13,3 +13,6 @@ wheels/
 
 Vectorization/.venv
 .env
+
+
+demagog-be\backend\.env

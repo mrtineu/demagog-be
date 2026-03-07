@@ -8,6 +8,7 @@ import logging
 import time
 from pathlib import Path
 
+from backend.config import VIDEO_UPLOAD_DIR
 from backend.models_video import (
     ExtractedStatement,
     SourceInfo,
@@ -20,6 +21,7 @@ from backend.services.transcription_service import transcribe_audio
 from backend.services.statement_extraction_service import extract_statements
 from backend.services.verification_service import verify_statement
 from backend.services.llm_client import get_openrouter_client
+from backend.services.youtube_service import download_youtube_audio, YouTubeDownloadError
 
 logger = logging.getLogger(__name__)
 
@@ -31,18 +33,13 @@ async def process_video_analysis(
     similarity_threshold: float,
     language: str,
 ) -> None:
-    """Full video analysis pipeline. Runs as a background task.
+    """Full video analysis pipeline (file upload path). Runs as a background task.
 
     Steps:
         1. Extract audio from video (ffmpeg)
-        2. Transcribe audio (whisper.cpp)
-        3. Extract statements from transcript (LLM)
-        4. Verify each statement (DB + optional web research)
-        5. Store results in job store
+        2-5. Shared pipeline (transcribe, extract, verify, complete)
     """
     start_time = time.time()
-    enable_research = verification_mode == "full"
-    llm_client = get_openrouter_client()
     audio_path: Path | None = None
 
     try:
@@ -56,74 +53,10 @@ async def process_video_analysis(
         audio_path = await asyncio.to_thread(extract_audio, video_path)
         job_store.update_job(job_id, progress_percent=10)
 
-        # Step 2: Transcription
-        job_store.update_job(
-            job_id,
-            status="transcribing",
-            current_step="Prepisujem zvuk na text...",
-            progress_percent=15,
-        )
-        transcript = await transcribe_audio(audio_path, language=language)
-        job_store.update_job(
-            job_id,
-            transcript=transcript.model_dump(),
-            video_duration_seconds=transcript.duration_seconds,
-            progress_percent=30,
-        )
-
-        # Step 3: Statement extraction
-        job_store.update_job(
-            job_id,
-            status="extracting_statements",
-            current_step="Identifikujem faktické tvrdenia...",
-            progress_percent=35,
-        )
-        statements = await asyncio.to_thread(
-            extract_statements, transcript.segments, llm_client
-        )
-        job_store.update_job(
-            job_id,
-            extracted_statements=[s.model_dump() for s in statements],
-            statements_total=len(statements),
-            progress_percent=40,
-        )
-
-        # Step 4: Verify each statement
-        job_store.update_job(
-            job_id,
-            status="verifying",
-            current_step="Overujem tvrdenia...",
-            statements_verified=0,
-        )
-
-        verified: list[dict] = []
-        for i, stmt in enumerate(statements):
-            result = await asyncio.to_thread(
-                verify_statement,
-                stmt.text,
-                llm_client,
-                similarity_threshold,
-                enable_research,
-            )
-            vs = _build_verified_statement(stmt, result)
-            verified.append(vs.model_dump())
-
-            progress = 40 + int(55 * (i + 1) / max(len(statements), 1))
-            job_store.update_job(
-                job_id,
-                statements_verified=i + 1,
-                progress_percent=min(progress, 95),
-            )
-
-        # Step 5: Complete
-        elapsed = time.time() - start_time
-        job_store.update_job(
-            job_id,
-            status="completed",
-            current_step="Hotovo",
-            verified_statements=verified,
-            processing_time_seconds=round(elapsed, 2),
-            progress_percent=100,
+        # Steps 2-5: Shared pipeline
+        await _run_analysis_from_audio(
+            job_id, audio_path, verification_mode,
+            similarity_threshold, language, start_time,
         )
 
     except Exception as e:
@@ -135,6 +68,159 @@ async def process_video_analysis(
         )
     finally:
         _cleanup_temp_files(video_path, audio_path)
+
+
+async def process_youtube_analysis(
+    job_id: str,
+    youtube_url: str,
+    verification_mode: str,
+    similarity_threshold: float,
+    language: str,
+) -> None:
+    """YouTube video analysis pipeline. Runs as a background task.
+
+    Steps:
+        0. Download audio from YouTube (yt-dlp)
+        1. Convert to 16kHz mono WAV (ffmpeg via extract_audio)
+        2-5. Shared pipeline (transcribe, extract, verify, complete)
+    """
+    start_time = time.time()
+    downloaded_path: Path | None = None
+    audio_path: Path | None = None
+
+    try:
+        # Step 0: Download audio from YouTube
+        job_store.update_job(
+            job_id,
+            status="downloading_audio",
+            current_step="Stahujem zvuk z YouTube...",
+            progress_percent=2,
+        )
+        downloaded_path = await asyncio.to_thread(
+            download_youtube_audio, youtube_url, VIDEO_UPLOAD_DIR,
+        )
+        job_store.update_job(job_id, progress_percent=5)
+
+        # Step 1: Convert downloaded audio to 16kHz mono WAV
+        job_store.update_job(
+            job_id,
+            status="extracting_audio",
+            current_step="Konvertujem zvuk...",
+            progress_percent=8,
+        )
+        audio_path = await asyncio.to_thread(extract_audio, downloaded_path)
+        job_store.update_job(job_id, progress_percent=10)
+
+        # Steps 2-5: Shared pipeline
+        await _run_analysis_from_audio(
+            job_id, audio_path, verification_mode,
+            similarity_threshold, language, start_time,
+        )
+
+    except YouTubeDownloadError as e:
+        logger.warning("YouTube download failed for job %s: %s", job_id, e)
+        job_store.update_job(
+            job_id, status="failed", error_message=str(e),
+        )
+    except ValueError as e:
+        logger.warning("YouTube video too long for job %s: %s", job_id, e)
+        job_store.update_job(
+            job_id, status="failed", error_message=str(e),
+        )
+    except Exception as e:
+        logger.exception("YouTube analysis failed for job %s", job_id)
+        job_store.update_job(
+            job_id, status="failed", error_message=str(e),
+        )
+    finally:
+        _cleanup_temp_files(downloaded_path, audio_path)
+
+
+async def _run_analysis_from_audio(
+    job_id: str,
+    audio_path: Path,
+    verification_mode: str,
+    similarity_threshold: float,
+    language: str,
+    start_time: float,
+) -> None:
+    """Shared pipeline: transcribe -> extract statements -> verify.
+
+    Assumes audio_path is a 16kHz mono WAV ready for whisper.cpp.
+    Updates job store with progress. Does NOT handle cleanup.
+    """
+    enable_research = verification_mode == "full"
+    llm_client = get_openrouter_client()
+
+    # Step 2: Transcription
+    job_store.update_job(
+        job_id,
+        status="transcribing",
+        current_step="Prepisujem zvuk na text...",
+        progress_percent=15,
+    )
+    transcript = await transcribe_audio(audio_path, language=language)
+    job_store.update_job(
+        job_id,
+        transcript=transcript.model_dump(),
+        video_duration_seconds=transcript.duration_seconds,
+        progress_percent=30,
+    )
+
+    # Step 3: Statement extraction
+    job_store.update_job(
+        job_id,
+        status="extracting_statements",
+        current_step="Identifikujem faktické tvrdenia...",
+        progress_percent=35,
+    )
+    statements = await asyncio.to_thread(
+        extract_statements, transcript.segments, llm_client
+    )
+    job_store.update_job(
+        job_id,
+        extracted_statements=[s.model_dump() for s in statements],
+        statements_total=len(statements),
+        progress_percent=40,
+    )
+
+    # Step 4: Verify each statement
+    job_store.update_job(
+        job_id,
+        status="verifying",
+        current_step="Overujem tvrdenia...",
+        statements_verified=0,
+    )
+
+    verified: list[dict] = []
+    for i, stmt in enumerate(statements):
+        result = await asyncio.to_thread(
+            verify_statement,
+            stmt.text,
+            llm_client,
+            similarity_threshold,
+            enable_research,
+        )
+        vs = _build_verified_statement(stmt, result)
+        verified.append(vs.model_dump())
+
+        progress = 40 + int(55 * (i + 1) / max(len(statements), 1))
+        job_store.update_job(
+            job_id,
+            statements_verified=i + 1,
+            progress_percent=min(progress, 95),
+        )
+
+    # Step 5: Complete
+    elapsed = time.time() - start_time
+    job_store.update_job(
+        job_id,
+        status="completed",
+        current_step="Hotovo",
+        verified_statements=verified,
+        processing_time_seconds=round(elapsed, 2),
+        progress_percent=100,
+    )
 
 
 def _build_verified_statement(
@@ -188,7 +274,7 @@ def _build_verified_statement(
     )
 
 
-def _cleanup_temp_files(video_path: Path, audio_path: Path | None = None) -> None:
+def _cleanup_temp_files(video_path: Path | None, audio_path: Path | None = None) -> None:
     """Remove temporary video and audio files."""
     for path in [video_path, audio_path]:
         if path is not None:

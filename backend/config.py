@@ -21,6 +21,7 @@ OPENROUTER_KEY = os.getenv("OPENROUTER_KEY", "")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")
 MAX_VIDEO_SIZE_MB = int(os.getenv("MAX_VIDEO_SIZE_MB", "500"))
 VIDEO_UPLOAD_DIR = _PROJECT_ROOT / os.getenv("VIDEO_UPLOAD_DIR", "data/uploads")
+MAX_YOUTUBE_DURATION_MINUTES = int(os.getenv("MAX_YOUTUBE_DURATION_MINUTES", "120"))
 
 # LLM settings
 LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-3-flash-preview")

@@ -13,6 +13,11 @@ wheels/
 
 Vectorization/.venv
 .env
+<<<<<<< HEAD
+backend/.env
+
+=======
 
 
 demagog-be\backend\.env
+>>>>>>> bec38623368a43fe3e27bd5d69c1cc6171401ea2

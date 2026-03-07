@@ -1,10 +1,13 @@
 from enum import Enum
+import logging
 
-from fastapi import APIRouter, Query
-from backend.models import VyrokItem, PaginatedVyroky
-from backend.data_loader import get_vyroky_df
+from fastapi import APIRouter, Query, HTTPException
+from backend.models import VyrokItem, VyrokCreate, PaginatedVyroky
+from backend.data_loader import get_vyroky_df, append_vyrok
 
 router = APIRouter(prefix="/api", tags=["vyroky"])
+
+logger = logging.getLogger(__name__)
 
 
 class VyrokySortBy(str, Enum):
@@ -78,3 +81,34 @@ def list_vyroky(
     ]
 
     return PaginatedVyroky(items=items, total=total, page=page, page_size=page_size)
+
+@router.post("/vyroky", response_model=VyrokItem, status_code=201)
+def create_vyrok(body: VyrokCreate):
+    row = {
+        "Výrok": body.vyrok,
+        "Vyhodnotenie": body.vyhodnotenie,
+        "Odôvodnenie": body.odovodnenie,
+        "Oblast": body.oblast,
+        "Dátum": body.datum,
+        "Meno": body.meno,
+        "Politická strana": body.politicka_strana,
+    }
+
+    append_vyrok(row)
+
+    # Best-effort upsert into Qdrant so the new statement is searchable
+    try:
+        from backend.qdrant_service import upsert_vyrok
+        upsert_vyrok(row)
+    except Exception:
+        logger.warning("Failed to upsert new výrok into Qdrant", exc_info=True)
+
+    return VyrokItem(
+        vyrok=body.vyrok,
+        vyhodnotenie=body.vyhodnotenie,
+        odovodnenie=body.odovodnenie,
+        oblast=body.oblast,
+        datum=body.datum,
+        meno=body.meno,
+        politicka_strana=body.politicka_strana,
+    )

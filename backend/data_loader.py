@@ -18,6 +18,16 @@ def get_vyroky_df() -> pd.DataFrame:
     return _vyroky_df
 
 
+def append_vyrok(row: dict) -> None:
+    """Append a single statement row to the in-memory DataFrame and CSV."""
+    global _vyroky_df
+    if _vyroky_df is None:
+        load_dataframes()
+    new_row = pd.DataFrame([row])
+    _vyroky_df = pd.concat([_vyroky_df, new_row], ignore_index=True)
+    _vyroky_df.to_csv(VYROKY_CSV_PATH, sep=";", index=False)
+
+
 def get_clanky_df() -> pd.DataFrame:
     if _clanky_df is None:
         load_dataframes()

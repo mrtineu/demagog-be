@@ -12,7 +12,7 @@ from qdrant_client import QdrantClient
 EC2_IP = "13.48.59.38"
 QDRANT_PORT = 6333
 INFINITY_PORT = 7997
-COLLECTION = "politicke_vyroky_final_1"
+COLLECTION = "test_1"
 MODEL = "BAAI/bge-m3"
 TOP_K = 5
 

@@ -31,7 +31,7 @@ load_dotenv()
 EC2_IP = "13.48.59.38"
 QDRANT_PORT = 6333
 INFINITY_PORT = 7997
-COLLECTION = "politicke_vyroky_final_1"
+COLLECTION = "test_1"
 MODEL = "BAAI/bge-m3"
 
 # Verification defaults
@@ -39,6 +39,10 @@ TOP_K = 5
 DEFAULT_THRESHOLD = 0.6
 LLM_MODEL = "google/gemini-3-flash-preview"
 LLM_TEMPERATURE = 0.1
+
+# Incomplete-statement detection
+MIN_WORD_COUNT = 4
+MIN_LENGTH_RATIO = 0.5
 
 VERDICT_LABEL = {
     "Pravda": "PRAVDA",
@@ -99,6 +103,36 @@ def search_similar(qdrant: QdrantClient, query_text: str, top_k: int = TOP_K) ->
 def filter_by_threshold(results: list[dict], threshold: float) -> list[dict]:
     """Keep only results with similarity score >= threshold."""
     return [r for r in results if r["score"] >= threshold]
+
+
+def is_incomplete_statement(statement: str, db_results: list[dict]) -> tuple[bool, str]:
+    """Detect obviously incomplete or fragmentary input statements.
+
+    Returns (True, reason) if the statement appears incomplete,
+    (False, "") otherwise.
+    """
+    words = statement.split()
+
+    # Check 1: Minimum word count
+    if len(words) < MIN_WORD_COUNT:
+        return True, (
+            f"Vstupný výrok obsahuje iba {len(words)} slov(á). "
+            "Úplné faktické tvrdenie vyžaduje aspoň podmět, prísudok a predmět."
+        )
+
+    # Check 2: Input much shorter than best matching DB statement
+    if db_results:
+        best_match = db_results[0]["vyrok"]
+        if best_match:
+            ratio = len(statement) / len(best_match)
+            if ratio < MIN_LENGTH_RATIO:
+                return True, (
+                    f"Vstupný výrok je výrazne kratší než najbližší nájdený záznam "
+                    f"({len(statement)} vs {len(best_match)} znakov, pomer {ratio:.0%}). "
+                    "Neúplný výrok nie je možné overiť."
+                )
+
+    return False, ""
 
 
 # --- LLM System Prompt ---
@@ -184,6 +218,19 @@ rovnaké konkrétne hodnoty ako databázový záznam, NIE JE to zhoda.
 7. Ak viacero výsledkov zodpovedá, vyber ten s najlepšou sémantickou zhodou a použi jeho verdikt.
 
 8. Odpovedz VÝHRADNE v nasledujúcom JSON formáte, bez akéhokoľvek ďalšieho textu:
+
+9. NEÚPLNÉ VÝROKY: Ak vstupný výrok je zjavne neúplný, fragmentárny alebo nevyjadruje \
+ucelené faktické tvrdenie, vráť verdikt "Nedostatok dát". Neúplný výrok je taký, ktorému \
+chýba podmět, prísudok alebo predmet — napríklad iba niekoľko slov z dlhšej vety. \
+Aj keď databáza obsahuje podobný ÚPLNÝ výrok, neúplný vstup NIE JE možné klasifikovať, \
+pretože neobsahuje celé tvrdenie. \
+Príklady: \
+   - "Slovensko patrí" — NEÚPLNÝ (chýba predmet: patrí kam? do čoho?) → Nedostatok dát \
+   - "Ekonomika rástla" — NEÚPLNÝ (chýba kontext: o koľko? kedy?) → Nedostatok dát \
+   - "Minister povedal že" — NEÚPLNÝ (chýba obsah výroku) → Nedostatok dát \
+   - "Slovensko patrí do NATO" — ÚPLNÝ (subjekt + prísudok + predmet) → pokračuj v analýze \
+POZOR: Vysoké skóre podobnosti NEZNAMENÁ, že vstupný výrok je úplný! Fragment vety môže \
+mať vysoké skóre, pretože obsahuje kľúčové slová z úplného výroku.
 
 Ak existuje zhoda:
 {
@@ -396,6 +443,24 @@ def verify_statement(
 
     if not above_threshold:
         return build_no_data_result(statement, all_results, threshold)
+
+    # Step 2.5: Reject incomplete / fragmentary input
+    incomplete, reason = is_incomplete_statement(
+        statement, above_threshold or all_results
+    )
+    if incomplete:
+        return {
+            "vstupny_vyrok": statement,
+            "status": "bez_zhody",
+            "verdikt": "Nedostatok dát",
+            "verdikt_label": "NEDOSTATOK DÁT",
+            "odovodnenie_llm": reason,
+            "zdrojovy_vyrok": None,
+            "zdroj": None,
+            "pouzity_prah": threshold,
+            "pocet_nad_prahom": len(above_threshold),
+            "pocet_celkom": len(all_results),
+        }
 
     # Step 3: LLM evaluation
     llm_response = call_llm(llm_client, statement, above_threshold)

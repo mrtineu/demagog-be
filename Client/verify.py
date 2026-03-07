@@ -340,7 +340,7 @@ def print_human_readable(result: dict) -> None:
             print(f"  Skóre:           {src['skore_podobnosti']:.4f}")
             odov = src.get("odovodnenie", "")
             if odov:
-                print(f"  Odôvodnenie:     {odov[:400]}{'...' if len(odov) > 400 else ''}")
+                print(f"  Odôvodnenie:     {odov}")
     else:
         print(f"  VERDIKT: NEDOSTATOK DÁT")
         print(f"{'=' * 72}")

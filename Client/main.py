@@ -80,7 +80,7 @@ def main():
             print(f"Date:       {p.get('Dátum', 'N/A') or 'N/A'}")
             justification = p.get("Odôvodnenie", "") or ""
             if justification:
-                print(f"Reason:     {justification[:300]}{'...' if len(justification) > 300 else ''}")
+                print(f"Reason:     {justification}")
 
         print(f"\n{'=' * 80}\n")
 

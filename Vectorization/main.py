@@ -67,19 +67,19 @@ def create_db():
             "Odôvodnenie": row['Odôvodnenie']
             }
 
-        batch_points.append(
-            PointStruct(
-                id=str(uuid.uuid4()),
-                vector=embeddings[j].tolist(),
-                payload=payload
+            batch_points.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=embeddings[j].tolist(),
+                    payload=payload
+                )
             )
-        )
 
-    # Upload the batch to remote Qdrant
-    client.upsert(
-        collection_name=COLLECTION_NAME,
-        points=batch_points
-    )
+        # Upload the batch to remote Qdrant
+        client.upsert(
+            collection_name=COLLECTION_NAME,
+            points=batch_points
+        )
 
     print("Data successfully loaded into remote Qdrant!")
 

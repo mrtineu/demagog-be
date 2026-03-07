@@ -8,7 +8,7 @@ from openai import OpenAI
 from backend.models import VerifyRequest, VerifyResponse, VerifySource, WebSource
 from backend.qdrant_service import get_qdrant_client, embed
 from backend.config import EC2_IP, QDRANT_PORT, COLLECTION_NAME
-from backend.research_agent import research_statement
+from Client.research_agent import research_statement
 
 router = APIRouter(prefix="/api", tags=["verify"])
 logger = logging.getLogger(__name__)

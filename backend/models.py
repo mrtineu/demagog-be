@@ -21,7 +21,20 @@ class SearchResult(BaseModel):
     score: float
 
 
+class ExactMatch(BaseModel):
+    vyrok: str
+    vyhodnotenie: str
+    vyhodnotenie_label: str
+    je_pravda: bool | None
+    odovodnenie: str
+    oblast: str
+    datum: str
+    meno: str
+    politicka_strana: str
+
+
 class PaginatedSearchResults(BaseModel):
+    exact_match: ExactMatch | None = None
     items: list[SearchResult]
     total: int
     page: int
@@ -164,43 +177,6 @@ class VerifyResponse(BaseModel):
     pocet_podpornych_zdrojov: int | None = None
     protirecie: str | None = None
     safeguard_override: bool | None = None
-
-
-# --- Lookup (exact + similar) ---
-
-class LookupRequest(BaseModel):
-    vyrok: str
-    top_k: int = Field(default=5, ge=1, le=50)
-
-
-class ExactMatch(BaseModel):
-    vyrok: str
-    vyhodnotenie: str
-    vyhodnotenie_label: str
-    je_pravda: bool | None
-    odovodnenie: str
-    oblast: str
-    datum: str
-    meno: str
-    politicka_strana: str
-
-
-class SimilarStatement(BaseModel):
-    vyrok: str
-    vyhodnotenie: str
-    vyhodnotenie_label: str
-    je_pravda: bool | None
-    odovodnenie: str
-    oblast: str
-    datum: str
-    meno: str
-    politicka_strana: str
-    score: float
-
-
-class LookupResponse(BaseModel):
-    exact_match: ExactMatch | None
-    similar: list[SimilarStatement]
 
 
 # --- Statements (English API) ---

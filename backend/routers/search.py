@@ -72,8 +72,8 @@ def search(
             score=r["score"],
         )
         for r in results
-        # exclude the exact match row from similar results to avoid duplication
-        if r["vyrok"].strip().lower() != exact_text_lower or exact is None
+        # exclude the exact match from similar list to avoid duplication
+        if exact is None or r["vyrok"].strip().lower() != exact_text_lower
     ]
 
     total = len(items)

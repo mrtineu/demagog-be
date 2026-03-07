@@ -12,6 +12,7 @@ class SearchResult(BaseModel):
     vyrok: str
     vyhodnotenie: str
     vyhodnotenie_label: str
+    je_pravda: bool | None  # True=Pravda, False=Nepravda/Zavádzajúce, None=Neoveriteľné
     odovodnenie: str
     oblast: str
     datum: str
@@ -20,7 +21,20 @@ class SearchResult(BaseModel):
     score: float
 
 
+class ExactMatch(BaseModel):
+    vyrok: str
+    vyhodnotenie: str
+    vyhodnotenie_label: str
+    je_pravda: bool | None
+    odovodnenie: str
+    oblast: str
+    datum: str
+    meno: str
+    politicka_strana: str
+
+
 class PaginatedSearchResults(BaseModel):
+    exact_match: ExactMatch | None = None
     items: list[SearchResult]
     total: int
     page: int
@@ -121,6 +135,7 @@ class VerifyRequest(BaseModel):
     vyrok: str
     threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     top_k: int = Field(default=5, ge=1, le=50)
+    enable_research: bool = True
 
 
 class VerifySource(BaseModel):
@@ -134,17 +149,34 @@ class VerifySource(BaseModel):
     skore_podobnosti: float
 
 
+class WebSource(BaseModel):
+    url: str
+    nazov: str
+    relevantny_citat: str
+    typ_zdroja: str
+
+
 class VerifyResponse(BaseModel):
     vstupny_vyrok: str
     status: str
     verdikt: str
     verdikt_label: str
+    je_pravda: bool | None  # True=Pravda, False=Nepravda/Zavádzajúce, None=Neoveriteľné/Nedostatok dát
     odovodnenie_llm: str
     zdrojovy_vyrok: str | None
     zdroj: VerifySource | None
-    pouzity_prah: float
+    pouzity_prah: float | None
     pocet_nad_prahom: int
     pocet_celkom: int
+    web_research_used: bool = False  # True when Tavily web research was triggered
+    # Web research fields (populated only when status == "webovy_vyskum")
+    typ_overenia: str | None = None
+    istota: str | None = None
+    webove_zdroje: list[WebSource] | None = None
+    pocet_najdenych_zdrojov: int | None = None
+    pocet_podpornych_zdrojov: int | None = None
+    protirecie: str | None = None
+    safeguard_override: bool | None = None
 
 
 # --- Statements (English API) ---

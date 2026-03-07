@@ -22,6 +22,16 @@ class SearchResult(BaseModel):
 
 # --- Vyroky (statements) ---
 
+class VyrokCreate(BaseModel):
+    vyrok: str
+    vyhodnotenie: str
+    odovodnenie: str = ""
+    oblast: str = ""
+    datum: str
+    meno: str
+    politicka_strana: str = ""
+
+
 class VyrokItem(BaseModel):
     vyrok: str
     vyhodnotenie: str
@@ -96,3 +106,103 @@ class PartySummary(BaseModel):
 class OblastSummary(BaseModel):
     oblast: str
     total: int
+
+
+# --- Verify ---
+
+class VerifyRequest(BaseModel):
+    vyrok: str
+    threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    top_k: int = Field(default=5, ge=1, le=50)
+
+
+class VerifySource(BaseModel):
+    vyrok: str
+    vyhodnotenie: str
+    odovodnenie: str
+    oblast: str
+    datum: str
+    meno: str
+    politicka_strana: str
+    skore_podobnosti: float
+
+
+class VerifyResponse(BaseModel):
+    vstupny_vyrok: str
+    status: str
+    verdikt: str
+    verdikt_label: str
+    odovodnenie_llm: str
+    zdrojovy_vyrok: str | None
+    zdroj: VerifySource | None
+    pouzity_prah: float
+    pocet_nad_prahom: int
+    pocet_celkom: int
+
+
+# --- Statements (English API) ---
+
+class Statement(BaseModel):
+    id: str
+    politicianName: str
+    politicianParty: str
+    photoUrl: str | None = None
+    statementText: str
+    verdict: str  # "true" | "false" | "misleading" | "uncheckable"
+    date: str     # ISO date YYYY-MM-DD
+    sourceUrl: str | None = None
+    explanation: str
+    topic: str
+
+
+# --- Chat ---
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+
+
+# --- Dashboard ---
+
+class PartyStats(BaseModel):
+    party: str
+    true: int
+    false: int
+    misleading: int
+    uncheckable: int
+    total: int
+
+
+class TopicStats(BaseModel):
+    topic: str
+    total: int
+    true: int
+    false: int
+    misleading: int
+    uncheckable: int
+
+
+class PoliticianStats(BaseModel):
+    id: str
+    name: str
+    party: str
+    photoUrl: str | None = None
+    total: int
+    true: int
+    false: int
+    misleading: int
+    uncheckable: int
+    truthRate: float
+
+
+class DashboardStats(BaseModel):
+    totalStatements: int
+    truthRate: float
+    falseRate: float
+    verdictBreakdown: dict[str, int]
+    byParty: list[PartyStats]
+    byTopic: list[TopicStats]
+    byPolitician: list[PoliticianStats]

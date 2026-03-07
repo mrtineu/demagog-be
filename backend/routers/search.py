@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException
-from backend.models import SearchRequest, SearchResult
+from fastapi import APIRouter, HTTPException, Query
+from backend.models import SearchResult
 from backend.qdrant_service import search_similar
 
 router = APIRouter(prefix="/api", tags=["search"])
@@ -12,10 +12,13 @@ VERDICT_LABEL = {
 }
 
 
-@router.post("/search", response_model=list[SearchResult])
-def search(req: SearchRequest):
+@router.get("/search", response_model=list[SearchResult])
+def search(
+    query: str = Query(..., min_length=1),
+    top_k: int = Query(5, ge=1, le=50),
+):
     try:
-        results = search_similar(req.query, req.top_k)
+        results = search_similar(query, top_k)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Search service error: {e}")
 

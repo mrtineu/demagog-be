@@ -166,6 +166,43 @@ class VerifyResponse(BaseModel):
     safeguard_override: bool | None = None
 
 
+# --- Lookup (exact + similar) ---
+
+class LookupRequest(BaseModel):
+    vyrok: str
+    top_k: int = Field(default=5, ge=1, le=50)
+
+
+class ExactMatch(BaseModel):
+    vyrok: str
+    vyhodnotenie: str
+    vyhodnotenie_label: str
+    je_pravda: bool | None
+    odovodnenie: str
+    oblast: str
+    datum: str
+    meno: str
+    politicka_strana: str
+
+
+class SimilarStatement(BaseModel):
+    vyrok: str
+    vyhodnotenie: str
+    vyhodnotenie_label: str
+    je_pravda: bool | None
+    odovodnenie: str
+    oblast: str
+    datum: str
+    meno: str
+    politicka_strana: str
+    score: float
+
+
+class LookupResponse(BaseModel):
+    exact_match: ExactMatch | None
+    similar: list[SimilarStatement]
+
+
 # --- Statements (English API) ---
 
 class Statement(BaseModel):

@@ -5,6 +5,7 @@
 #     "qdrant-client",
 #     "openai",
 #     "python-dotenv",
+#     "tavily-python",
 # ]
 # ///
 
@@ -24,6 +25,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 import requests
 from qdrant_client import QdrantClient
+
+from research_agent import research_statement
 
 load_dotenv()
 
@@ -388,14 +391,42 @@ def print_human_readable(result: dict) -> None:
             odov = src.get("odovodnenie", "")
             if odov:
                 print(f"  Odôvodnenie:     {odov[:400]}{'...' if len(odov) > 400 else ''}")
+    elif status == "webovy_vyskum":
+        verdikt = result.get("verdikt_label", result.get("verdikt", "N/A"))
+        print(f"  VERDIKT: {verdikt} (webový výskum)")
+        print(f"{'=' * 72}")
+        print(f"\n  Vstupný výrok:   {result['vstupny_vyrok']}")
+        print(f"  Istota:          {result.get('istota', 'N/A')}")
+        print(f"\n  Odôvodnenie LLM: {result['odovodnenie_llm']}")
+
+        sources = result.get("webove_zdroje", [])
+        if sources:
+            print(f"\n  --- Webové zdroje ({len(sources)}) ---")
+            for i, src in enumerate(sources, 1):
+                print(f"  [{i}] {src.get('nazov', 'N/A')}")
+                print(f"      URL: {src.get('url', 'N/A')}")
+                print(f"      Typ: {src.get('typ_zdroja', 'N/A')}")
+                citat = src.get("relevantny_citat", "")
+                if citat:
+                    print(f"      Citát: {citat[:200]}{'...' if len(citat) > 200 else ''}")
+
+        if result.get("safeguard_override"):
+            print(f"\n  [!] Bezpečnostná poistka aktivovaná")
+
+        print(f"\n  [Nájdené zdroje: {result.get('pocet_najdenych_zdrojov', 0)} | "
+              f"Podporné: {result.get('pocet_podpornych_zdrojov', 0)}]")
+        print(f"\n  Toto je automatický návrh na základe webového výskumu.")
+        print(f"  Konečné overenie musí vykonať ľudský analytik (min. 3-osobná kontrola).")
     else:
         print(f"  VERDIKT: NEDOSTATOK DÁT")
         print(f"{'=' * 72}")
         print(f"\n  Vstupný výrok:   {result['vstupny_vyrok']}")
         print(f"\n  Dôvod:           {result['odovodnenie_llm']}")
 
-    print(f"\n  [Prah: {result['pouzity_prah']} | "
-          f"Nad prahom: {result['pocet_nad_prahom']}/{result['pocet_celkom']}]")
+    prah = result.get("pouzity_prah")
+    if prah is not None:
+        print(f"\n  [Prah: {prah} | "
+              f"Nad prahom: {result.get('pocet_nad_prahom', 0)}/{result.get('pocet_celkom', 0)}]")
     print(f"{'=' * 72}\n")
 
 
@@ -422,6 +453,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_THRESHOLD,
         help=f"Similarity score threshold (default: {DEFAULT_THRESHOLD})",
     )
+    parser.add_argument(
+        "--no-research",
+        action="store_true",
+        default=False,
+        help="Disable web research fallback when no DB match is found",
+    )
     return parser.parse_args()
 
 
@@ -430,21 +467,28 @@ def verify_statement(
     qdrant: QdrantClient,
     llm_client: OpenAI,
     threshold: float,
+    enable_research: bool = True,
 ) -> dict:
     """Full verification pipeline for a single statement."""
     # Step 1: Search Qdrant
     all_results = search_similar(qdrant, statement, TOP_K)
 
     if not all_results:
-        return build_no_data_result(statement, all_results, threshold)
+        result = build_no_data_result(statement, all_results, threshold)
+        if enable_research:
+            return _try_research_fallback(statement, llm_client, result)
+        return result
 
     # Step 2: Filter by threshold
     above_threshold = filter_by_threshold(all_results, threshold)
 
     if not above_threshold:
-        return build_no_data_result(statement, all_results, threshold)
+        result = build_no_data_result(statement, all_results, threshold)
+        if enable_research:
+            return _try_research_fallback(statement, llm_client, result)
+        return result
 
-    # Step 2.5: Reject incomplete / fragmentary input
+    # Step 2.5: Reject incomplete / fragmentary input (NO research for fragments)
     incomplete, reason = is_incomplete_statement(
         statement, above_threshold or all_results
     )
@@ -466,9 +510,27 @@ def verify_statement(
     llm_response = call_llm(llm_client, statement, above_threshold)
 
     # Step 4: Assemble result
-    return build_verification_result(
+    result = build_verification_result(
         statement, llm_response, above_threshold, all_results, threshold
     )
+
+    # Step 5: If LLM found no DB match, try web research
+    if enable_research and result["verdikt"] == "Nedostatok dát":
+        return _try_research_fallback(statement, llm_client, result)
+
+    return result
+
+
+def _try_research_fallback(
+    statement: str, llm_client: OpenAI, original_result: dict
+) -> dict:
+    """Attempt web research fallback. Returns original result on failure."""
+    try:
+        print("  [Spúšťam webový výskum...]\n", file=sys.stderr)
+        return research_statement(statement, llm_client)
+    except Exception as e:
+        print(f"  Webový výskum zlyhal: {e}\n", file=sys.stderr)
+        return original_result
 
 
 def main():
@@ -493,7 +555,10 @@ def main():
             break
 
         try:
-            result = verify_statement(statement, qdrant, llm_client, args.threshold)
+            result = verify_statement(
+                statement, qdrant, llm_client, args.threshold,
+                enable_research=not args.no_research,
+            )
         except json.JSONDecodeError as e:
             print(f"Chyba: LLM vrátil neplatný JSON: {e}\n", file=sys.stderr)
             continue

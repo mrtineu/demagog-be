@@ -62,3 +62,37 @@ class StatsResponse(BaseModel):
     verdicts: dict[str, int]
     parties: dict[str, int]
     politicians: dict[str, int]
+
+
+# --- Politicians ---
+
+class PoliticianSummary(BaseModel):
+    meno: str
+    politicka_strana: str
+    total: int
+    verdicts: dict[str, int]
+
+
+class PoliticianDetail(BaseModel):
+    meno: str
+    politicka_strana: str
+    total: int
+    verdicts: dict[str, int]
+    oblasts: dict[str, int]
+    recent_vyroky: list[VyrokItem]
+
+
+# --- Parties ---
+
+class PartySummary(BaseModel):
+    politicka_strana: str
+    total: int
+    verdicts: dict[str, int]
+    politicians_count: int
+
+
+# --- Oblasts ---
+
+class OblastSummary(BaseModel):
+    oblast: str
+    total: int

@@ -1,5 +1,6 @@
 """HTTP client adapter for whisper.cpp transcription endpoint."""
 
+import re
 import httpx
 from pathlib import Path
 
@@ -35,36 +36,48 @@ async def transcribe_audio(audio_path: Path, language: str = "sk") -> Transcript
                 f"{WHISPER_ENDPOINT}/inference",
                 files={"file": ("audio.wav", f, "audio/wav")},
                 data={
-                    "response_format": "verbose_json",
+                    "response_format": "srt",
                     "language": language,
                 },
             )
         response.raise_for_status()
-        data = response.json()
+        srt_text = response.text
 
-    return _parse_whisper_response(data)
+    return _parse_srt_response(srt_text, language)
 
 
-def _parse_whisper_response(data: dict) -> Transcript:
-    """Parse whisper.cpp verbose_json response into Transcript model.
+def _parse_srt_response(srt_text: str, language: str) -> Transcript:
+    """Parse whisper.cpp SRT response into Transcript model.
 
-    This is the single adaptation point if the whisper.cpp API format
-    differs from what we expect. Handles both start/end and t0/t1 naming.
+    SRT format:
+        1
+        00:00:00,000 --> 00:00:02,500
+        Segment text here
 
-    Expected format:
-        {
-            "text": "full text...",
-            "segments": [
-                {"start": 0.0, "end": 2.5, "text": "..."},
-                ...
-            ]
-        }
+        2
+        00:00:02,500 --> 00:00:05,000
+        Next segment text
     """
     segments = []
-    for seg in data.get("segments", []):
-        start = float(seg.get("start", seg.get("t0", 0)))
-        end = float(seg.get("end", seg.get("t1", 0)))
-        text = seg.get("text", "").strip()
+    blocks = re.split(r"\n\n+", srt_text.strip())
+
+    for block in blocks:
+        lines = block.strip().splitlines()
+        if len(lines) < 3:
+            continue
+
+        time_match = re.match(
+            r"(\d{2}):(\d{2}):(\d{2}),(\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2}),(\d{3})",
+            lines[1],
+        )
+        if not time_match:
+            continue
+
+        h1, m1, s1, ms1, h2, m2, s2, ms2 = time_match.groups()
+        start = int(h1) * 3600 + int(m1) * 60 + int(s1) + int(ms1) / 1000
+        end = int(h2) * 3600 + int(m2) * 60 + int(s2) + int(ms2) / 1000
+        text = " ".join(lines[2:]).strip()
+
         if text:
             segments.append(TranscriptSegment(
                 start_time=start,
@@ -72,12 +85,12 @@ def _parse_whisper_response(data: dict) -> Transcript:
                 text=text,
             ))
 
-    full_text = data.get("text", "")
+    full_text = " ".join(seg.text for seg in segments)
     duration = segments[-1].end_time if segments else 0.0
 
     return Transcript(
         segments=segments,
         full_text=full_text,
-        language=data.get("language", "sk"),
+        language=language,
         duration_seconds=duration,
     )

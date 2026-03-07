@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 LLM_MODEL = "google/gemini-3-flash-preview"
 LLM_TEMPERATURE = 0.1
 
+# Incomplete-statement detection
+MIN_WORD_COUNT = 4
+MIN_LENGTH_RATIO = 0.5
+
 VERDICT_LABEL = {
     "Pravda": "PRAVDA",
     "Nepravda": "NEPRAVDA",
@@ -108,6 +112,19 @@ rovnaké konkrétne hodnoty ako databázový záznam, NIE JE to zhoda.
 
 8. Odpovedz VÝHRADNE v nasledujúcom JSON formáte, bez akéhokoľvek ďalšieho textu:
 
+9. NEÚPLNÉ VÝROKY: Ak vstupný výrok je zjavne neúplný, fragmentárny alebo nevyjadruje \
+ucelené faktické tvrdenie, vráť verdikt "Nedostatok dát". Neúplný výrok je taký, ktorému \
+chýba podmět, prísudok alebo predmet — napríklad iba niekoľko slov z dlhšej vety. \
+Aj keď databáza obsahuje podobný ÚPLNÝ výrok, neúplný vstup NIE JE možné klasifikovať, \
+pretože neobsahuje celé tvrdenie. \
+Príklady: \
+   - "Slovensko patrí" — NEÚPLNÝ (chýba predmet: patrí kam? do čoho?) → Nedostatok dát \
+   - "Ekonomika rástla" — NEÚPLNÝ (chýba kontext: o koľko? kedy?) → Nedostatok dát \
+   - "Minister povedal že" — NEÚPLNÝ (chýba obsah výroku) → Nedostatok dát \
+   - "Slovensko patrí do NATO" — ÚPLNÝ (subjekt + prísudok + predmet) → pokračuj v analýze \
+POZOR: Vysoké skóre podobnosti NEZNAMENÁ, že vstupný výrok je úplný! Fragment vety môže \
+mať vysoké skóre, pretože obsahuje kľúčové slová z úplného výroku.
+
 Ak existuje zhoda:
 {
   "zhoda": true,
@@ -129,6 +146,32 @@ nie je overiteľný podľa metodológie Demagog.sk>",
   "index_zhody": null
 }
 """
+
+# ── Incomplete-statement detection ────────────────────────────────────
+
+def _is_incomplete_statement(statement: str, db_results: list[dict]) -> tuple[bool, str]:
+    """Return (True, reason) if the statement is obviously fragmentary."""
+    words = statement.split()
+
+    if len(words) < MIN_WORD_COUNT:
+        return True, (
+            f"Vstupný výrok obsahuje iba {len(words)} slov(á). "
+            "Úplné faktické tvrdenie vyžaduje aspoň podmět, prísudok a predmět."
+        )
+
+    if db_results:
+        best_match = db_results[0]["vyrok"]
+        if best_match:
+            ratio = len(statement) / len(best_match)
+            if ratio < MIN_LENGTH_RATIO:
+                return True, (
+                    f"Vstupný výrok je výrazne kratší než najbližší nájdený záznam "
+                    f"({len(statement)} vs {len(best_match)} znakov, pomer {ratio:.0%}). "
+                    "Neúplný výrok nie je možné overiť."
+                )
+
+    return False, ""
+
 
 # ── OpenRouter client (lazy singleton) ─────────────────────────────────
 
@@ -287,6 +330,22 @@ def verify_statement(body: VerifyRequest):
 
     if not above:
         return _build_no_data(body.vyrok, all_results, body.threshold)
+
+    # Step 2.5: Reject incomplete / fragmentary input
+    incomplete, reason = _is_incomplete_statement(body.vyrok, above or all_results)
+    if incomplete:
+        return VerifyResponse(
+            vstupny_vyrok=body.vyrok,
+            status="bez_zhody",
+            verdikt="Nedostatok dát",
+            verdikt_label="NEDOSTATOK DÁT",
+            odovodnenie_llm=reason,
+            zdrojovy_vyrok=None,
+            zdroj=None,
+            pouzity_prah=body.threshold,
+            pocet_nad_prahom=len(above),
+            pocet_celkom=len(all_results),
+        )
 
     try:
         llm_resp = _call_llm(body.vyrok, above)

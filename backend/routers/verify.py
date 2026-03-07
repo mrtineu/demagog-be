@@ -5,9 +5,10 @@ import os
 from fastapi import APIRouter, HTTPException
 from openai import OpenAI
 
-from backend.models import VerifyRequest, VerifyResponse, VerifySource
+from backend.models import VerifyRequest, VerifyResponse, VerifySource, WebSource
 from backend.qdrant_service import get_qdrant_client, embed
 from backend.config import EC2_IP, QDRANT_PORT, COLLECTION_NAME
+from backend.research_agent import research_statement
 
 router = APIRouter(prefix="/api", tags=["verify"])
 logger = logging.getLogger(__name__)
@@ -316,6 +317,65 @@ def _build_no_data(
     )
 
 
+# ── Research fallback helpers ────────────────────────────────────────────
+
+def _build_research_response(research: dict, threshold: float | None) -> VerifyResponse:
+    """Map research_agent output dict to VerifyResponse."""
+    raw_sources = research.get("webove_zdroje") or []
+    web_sources = [
+        WebSource(
+            url=s.get("url", ""),
+            nazov=s.get("nazov", ""),
+            relevantny_citat=s.get("relevantny_citat", ""),
+            typ_zdroja=s.get("typ_zdroja", ""),
+        )
+        for s in raw_sources
+        if isinstance(s, dict)
+    ]
+    return VerifyResponse(
+        vstupny_vyrok=research["vstupny_vyrok"],
+        status=research.get("status", "webovy_vyskum"),
+        verdikt=research.get("verdikt", "Neoveriteľné"),
+        verdikt_label=research.get("verdikt_label", ""),
+        odovodnenie_llm=research.get("odovodnenie_llm", ""),
+        zdrojovy_vyrok=None,
+        zdroj=None,
+        pouzity_prah=None,
+        pocet_nad_prahom=0,
+        pocet_celkom=0,
+        typ_overenia="webovy_vyskum",
+        istota=research.get("istota"),
+        webove_zdroje=web_sources if web_sources else None,
+        pocet_najdenych_zdrojov=research.get("pocet_najdenych_zdrojov"),
+        pocet_podpornych_zdrojov=research.get("pocet_podpornych_zdrojov"),
+        protirecie=research.get("protirecie"),
+        safeguard_override=research.get("safeguard_override"),
+    )
+
+
+def _research_fallback(statement: str, threshold: float) -> VerifyResponse:
+    """Call the web research agent. On any failure return a safe bez_zhody response."""
+    try:
+        research_dict = research_statement(statement, _get_openrouter_client())
+        return _build_research_response(research_dict, threshold)
+    except Exception as exc:
+        logger.error("Web research fallback failed: %s", exc)
+        return VerifyResponse(
+            vstupny_vyrok=statement,
+            status="bez_zhody",
+            verdikt="Nedostatok dát",
+            verdikt_label="NEDOSTATOK DÁT",
+            odovodnenie_llm=(
+                f"Databáza neobsahuje zhodu a webový výskum zlyhal: {exc}"
+            ),
+            zdrojovy_vyrok=None,
+            zdroj=None,
+            pouzity_prah=threshold,
+            pocet_nad_prahom=0,
+            pocet_celkom=0,
+        )
+
+
 # ── Endpoint ────────────────────────────────────────────────────────────
 
 @router.post("/verify", response_model=VerifyResponse)
@@ -324,14 +384,18 @@ def verify_statement(body: VerifyRequest):
     all_results = _search_similar(body.vyrok, body.top_k)
 
     if not all_results:
+        if body.enable_research:
+            return _research_fallback(body.vyrok, body.threshold)
         return _build_no_data(body.vyrok, all_results, body.threshold)
 
     above = [r for r in all_results if r["score"] >= body.threshold]
 
     if not above:
+        if body.enable_research:
+            return _research_fallback(body.vyrok, body.threshold)
         return _build_no_data(body.vyrok, all_results, body.threshold)
 
-    # Step 2.5: Reject incomplete / fragmentary input
+    # Step 2.5: Reject incomplete / fragmentary input (no research for fragments)
     incomplete, reason = _is_incomplete_statement(body.vyrok, above or all_results)
     if incomplete:
         return VerifyResponse(
@@ -352,4 +416,10 @@ def verify_statement(body: VerifyRequest):
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=502, detail=f"LLM returned invalid JSON: {exc}")
 
-    return _build_result(body.vyrok, llm_resp, above, all_results, body.threshold)
+    result = _build_result(body.vyrok, llm_resp, above, all_results, body.threshold)
+
+    # If LLM found no match in DB, try web research fallback
+    if body.enable_research and result.verdikt == "Nedostatok dát":
+        return _research_fallback(body.vyrok, body.threshold)
+
+    return result

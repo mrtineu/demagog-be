@@ -11,6 +11,13 @@ VERDICT_LABEL = {
     "Neoveriteľné": "NEOVERITEĽNÉ",
 }
 
+VERDICT_CORRECTNESS: dict[str, bool | None] = {
+    "Pravda": True,
+    "Nepravda": False,
+    "Zavádzajúce": False,
+    "Neoveriteľné": None,
+}
+
 
 @router.get("/search", response_model=PaginatedSearchResults)
 def search(
@@ -29,6 +36,7 @@ def search(
             vyrok=r["vyrok"],
             vyhodnotenie=r["vyhodnotenie"],
             vyhodnotenie_label=VERDICT_LABEL.get(r["vyhodnotenie"], r["vyhodnotenie"]),
+            je_pravda=VERDICT_CORRECTNESS.get(r["vyhodnotenie"]),
             odovodnenie=r["odovodnenie"],
             oblast=r["oblast"],
             datum=r["datum"],

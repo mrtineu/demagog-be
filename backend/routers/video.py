@@ -1,8 +1,10 @@
 """Video analysis API endpoints."""
 
 import json
+import logging
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -22,24 +24,43 @@ from backend.services.video_analysis_service import process_video_analysis
 
 router = APIRouter(prefix="/api", tags=["video"])
 
+logger = logging.getLogger(__name__)
+
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".wav", ".ogg"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
+
+
+@router.get("/videos/debug")
+def debug_video_dir():
+    """Debug endpoint to check video directory resolution."""
+    resolved = VIDEO_UPLOAD_DIR.resolve()
+    files = []
+    if resolved.is_dir():
+        files = [f.name for f in resolved.iterdir()]
+    return {
+        "VIDEO_UPLOAD_DIR": str(VIDEO_UPLOAD_DIR),
+        "resolved": str(resolved),
+        "exists": resolved.is_dir(),
+        "files": files,
+    }
 
 
 @router.get("/videos", response_model=list[VideoListItem])
 def get_all_videos():
     """List all uploaded videos by scanning the upload directory."""
-    if not VIDEO_UPLOAD_DIR.is_dir():
+    resolved = VIDEO_UPLOAD_DIR.resolve()
+    if not resolved.is_dir():
+        logger.warning("Video upload dir does not exist: %s", resolved)
         return []
 
     results = []
-    for path in VIDEO_UPLOAD_DIR.iterdir():
+    for path in resolved.iterdir():
         if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
-            sidecar = VIDEO_UPLOAD_DIR / f"{path.name}.json"
+            sidecar = resolved / f"{path.name}.json"
             results.append(
                 VideoListItem(
                     filename=path.name,
-                    video_url=f"/api/video/file/{path.name}",
+                    video_url=f"/api/video/file/{quote(path.name)}",
                     size_bytes=path.stat().st_size,
                     has_analysis=sidecar.is_file(),
                 )

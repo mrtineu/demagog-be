@@ -29,10 +29,12 @@ def get_all_videos():
     all_jobs = job_store.get_all_jobs()
     results = []
     for jid, job in all_jobs.items():
+        video_url = f"/api/video/file/{jid}" if job.get("video_filename") else None
         results.append(
             VideoAnalysisResponse(
                 job_id=jid,
                 status=job["status"],
+                video_url=video_url,
                 transcript=job.get("transcript"),
                 extracted_statements=job.get("extracted_statements", []),
                 verified_statements=job.get("verified_statements", []),
@@ -121,9 +123,11 @@ def get_job_result(job_id: str):
     if job["status"] not in ("completed", "failed"):
         raise HTTPException(202, "Still processing")
 
+    video_url = f"/api/video/file/{job_id}" if job.get("video_filename") else None
     return VideoAnalysisResponse(
         job_id=job_id,
         status=job["status"],
+        video_url=video_url,
         transcript=job.get("transcript"),
         extracted_statements=job.get("extracted_statements", []),
         verified_statements=job.get("verified_statements", []),

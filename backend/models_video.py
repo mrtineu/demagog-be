@@ -106,6 +106,7 @@ class JobProgress(BaseModel):
 class VideoAnalysisResponse(BaseModel):
     job_id: str
     status: JobStatus
+    video_url: Optional[str] = None
     transcript: Optional[Transcript] = None
     extracted_statements: list[ExtractedStatement] = Field(default_factory=list)
     verified_statements: list[VerifiedStatement] = Field(default_factory=list)

@@ -4,17 +4,9 @@ from fastapi import APIRouter, Query, HTTPException
 
 from backend.models import Statement
 from backend.data_loader import get_vyroky_df
+from shared.verdicts import VERDICT_MAP as _VERDICT_MAP
 
 router = APIRouter(prefix="/api", tags=["statements"])
-
-# Verdict mapping: Slovak → English
-_VERDICT_MAP = {
-    "Pravda": "true",
-    "Nepravda": "false",
-    "Zavádzajúce": "misleading",
-    "Neoveriteľné": "uncheckable",
-    "Neviem posúdiť": "uncheckable",
-}
 
 # Reverse mapping for filtering
 _VERDICT_MAP_REV = {v: k for k, v in _VERDICT_MAP.items()}

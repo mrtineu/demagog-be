@@ -9,19 +9,17 @@
 import requests
 from qdrant_client import QdrantClient
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from shared.verdicts import VERDICT_LABEL
+
 EC2_IP = "13.48.59.38"
 QDRANT_PORT = 6333
 INFINITY_PORT = 7997
 COLLECTION = "test_1"
 MODEL = "BAAI/bge-m3"
 TOP_K = 5
-
-VERDICT_LABEL = {
-    "Pravda": "PRAVDA",
-    "Nepravda": "NEPRAVDA",
-    "Zavádzajúce": "ZAVÁDZAJÚCE",
-    "Neoveriteľné": "NEOVERITEĽNÉ",
-}
 
 
 def embed(text):

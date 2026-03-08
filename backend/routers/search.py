@@ -2,22 +2,9 @@ from fastapi import APIRouter, HTTPException, Query
 from backend.data_loader import get_vyroky_df
 from backend.models import ExactMatch, SearchResult, PaginatedSearchResults
 from backend.qdrant_service import search_similar
+from shared.verdicts import VERDICT_LABEL, VERDICT_CORRECTNESS
 
 router = APIRouter(prefix="/api", tags=["search"])
-
-VERDICT_LABEL = {
-    "Pravda": "PRAVDA",
-    "Nepravda": "NEPRAVDA",
-    "Zavádzajúce": "ZAVÁDZAJÚCE",
-    "Neoveriteľné": "NEOVERITEĽNÉ",
-}
-
-VERDICT_CORRECTNESS: dict[str, bool | None] = {
-    "Pravda": True,
-    "Nepravda": False,
-    "Zavádzajúce": False,
-    "Neoveriteľné": None,
-}
 
 
 def _find_exact_match(query: str) -> ExactMatch | None:

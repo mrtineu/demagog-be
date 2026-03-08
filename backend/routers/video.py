@@ -4,6 +4,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from backend.config import MAX_VIDEO_SIZE_MB, VIDEO_UPLOAD_DIR
 from backend.models_video import (
@@ -77,6 +78,7 @@ async def analyze_video(
 
     # Create job
     job_id = job_store.create_job()
+    job_store.update_job(job_id, video_filename=video_filename)
 
     # Start background processing
     background_tasks.add_task(
@@ -129,3 +131,31 @@ def get_job_result(job_id: str):
         processing_time_seconds=job.get("processing_time_seconds"),
         error_message=job.get("error_message"),
     )
+
+
+@router.get("/video/file/{job_id}")
+def get_video_file(job_id: str):
+    """Serve the uploaded video file for frontend playback."""
+    job = job_store.get_job(job_id)
+    if job is None:
+        raise HTTPException(404, "Job not found")
+
+    filename = job.get("video_filename")
+    if not filename:
+        raise HTTPException(404, "Video file not available")
+
+    path = VIDEO_UPLOAD_DIR / filename
+    if not path.is_file():
+        raise HTTPException(404, "Video file not found on disk")
+
+    suffix = Path(filename).suffix.lower()
+    media_types = {
+        ".mp4": "video/mp4",
+        ".mkv": "video/x-matroska",
+        ".avi": "video/x-msvideo",
+        ".mov": "video/quicktime",
+        ".webm": "video/webm",
+    }
+    media_type = media_types.get(suffix, "application/octet-stream")
+
+    return FileResponse(path, media_type=media_type)

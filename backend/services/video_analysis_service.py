@@ -65,7 +65,7 @@ async def process_video_analysis(
             error_message=str(e),
         )
     finally:
-        _cleanup_temp_files(video_path, audio_path)
+        _cleanup_temp_files(audio_path)
 
 
 async def _run_analysis_from_audio(
@@ -206,9 +206,9 @@ def _build_verified_statement(
     )
 
 
-def _cleanup_temp_files(video_path: Path | None, audio_path: Path | None = None) -> None:
-    """Remove temporary video and audio files."""
-    for path in [video_path, audio_path]:
+def _cleanup_temp_files(*paths: Path | None) -> None:
+    """Remove temporary files."""
+    for path in paths:
         if path is not None:
             try:
                 path.unlink(missing_ok=True)

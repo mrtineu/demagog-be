@@ -135,7 +135,13 @@ class VerifyRequest(BaseModel):
     vyrok: str
     threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     top_k: int = Field(default=5, ge=1, le=50)
-    enable_research: bool = True
+
+
+class ResearchRequest(BaseModel):
+    """Request for web research on a statement that had no DB match."""
+    vyrok: str
+    threshold_used: float = Field(default=0.6, ge=0.0, le=1.0)
+    best_score: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
 class VerifySource(BaseModel):
@@ -168,6 +174,7 @@ class VerifyResponse(BaseModel):
     pouzity_prah: float | None
     pocet_nad_prahom: int
     pocet_celkom: int
+    research_available: bool = False  # True when user can request web research
     web_research_used: bool = False  # True when Tavily web research was triggered
     # Web research fields (populated only when status == "webovy_vyskum")
     typ_overenia: str | None = None

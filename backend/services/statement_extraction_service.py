@@ -11,40 +11,90 @@ from backend.models_video import TranscriptSegment, ExtractedStatement
 logger = logging.getLogger(__name__)
 
 EXTRACTION_SYSTEM_PROMPT = """\
-Si analytik politických diskusií. Tvoja úloha je identifikovať overiteľné \
+Si analytik portálu Demagog.sk. Tvoja úloha je identifikovať overiteľné \
 faktické tvrdenia v prepise politickej diskusie.
 
 === ČO EXTRAHOVAŤ ===
 
-Extrahuj IBA tvrdenia, ktoré sú:
-1. Overiteľné fakty - číselné údaje, štatistiky, historické udalosti, \
-   legislatívne skutočnosti
-2. Konkrétne - obsahujú špecifické čísla, dátumy, mená, zákony
-3. Priraditeľné - povedané konkrétnym rečníkom (ak je identifikovateľný)
+Extrahuj tvrdenia, ktoré spadajú do KTOREJKOĽVEK z týchto kategórií:
+
+1. Číselné a štatistické tvrdenia — čísla, percentá, sumy, počty
+2. Pripisovanie činov — kto (osoba, strana, inštitúcia, vláda) čo urobil \
+alebo neurobil ("Dzurindova vláda sprivatizovala nemocnice")
+3. Pripisovanie pozícií — čo niekto povedal, priznal, navrhol, odmietol \
+("SaS priznáva, že zruší dôchodok")
+4. Legislatívne a inštitucionálne tvrdenia — aké zákony sa prijali, ako \
+rozhodli súdy, čo urobil prezident/parlament
+5. Historické tvrdenia — čo sa v minulosti stalo alebo nestalo
+6. Porovnávacie a superlatívne tvrdenia — "najdlhší", "rekordný", \
+"viac ako", "prvýkrát"
+7. Tvrdenia o zahraničnej politike — čo urobili iné krajiny alebo \
+medzinárodné organizácie
+
+Tvrdenie NEMUSÍ obsahovať konkrétne čísla. Stačí, ak tvrdí niečo \
+konkrétne o reálnom svete, čo sa dá overiť alebo vyvrátiť.
 
 === ČO NEEXTRAHOVAŤ ===
 
 IGNORUJ:
-- Pozdravy, procedurálne vyjadrenia ("Dobrý deň", "Ďakujem za slovo")
-- Osobné názory a hodnotové súdy ("Myslím, že je to zlé")
-- Otázky (aj rétorické)
-- Predpovede do budúcnosti
-- Vágne tvrdenia bez konkrétnych údajov
+- Pozdravy a procedurálne vyjadrenia ("Dobrý deň", "Ďakujem za slovo")
+- Čisto hodnotové súdy BEZ faktického jadra ("Je to hanba", "To je zlé")
+- Otázky, ktoré samy o sebe neobsahujú faktické tvrdenie
+- Čisté špekulácie o budúcnosti bez faktického základu
 - Opakované tvrdenia (extrahuj len prvý výskyt)
+
+POZOR: Ak tvrdenie obsahuje hodnotové slovo, ale zároveň faktický \
+základ, EXTRAHUJ ho. Príklad: "Katastrofálne rozvrátené verejné financie" \
+je tvrdenie o stave financií. "Rekordné tržby maloobchodu" je tvrdenie \
+o tržbách.
+
+=== ÚPLNOSŤ A KONTEXT TVRDENIA ===
+
+Každé extrahované tvrdenie musí byť SAMO O SEBE zrozumiteľné — čitateľ, \
+ktorý nevidel diskusiu, musí pochopiť, čo rečník tvrdí.
+
+Pravidlá:
+- Ak tvrdenie odkazuje zámenami na niečo povedané skôr ("to", "tento \
+zákon", "ten úrad"), doplň kontext v zátvorke: \
+"(zákon o hazarde, pozn.)", "(trinásty, pozn.) dôchodok", \
+"(na Ukrajinu, pozn.)"
+- Ak vynechávaš nepodstatnú časť citátu, použi: "(...)"
+- Ak je tvrdenie rozdelené cez viacero segmentov, spoj ho do súvislej \
+a kompletnej citácie
+- Viacvetné tvrdenia zachovaj celé, ak tvoria jeden logický argument
+- Zachovaj pôvodné znenie rečníka — NEPARAFRÁZUJ
+
+=== PRÍKLADY SPRÁVNE EXTRAHOVANÝCH TVRDENÍ ===
+
+Pripisovanie činu:
+"…bývalej Dzurindovej vlády, ktorá sprivatizovala všetky nemocnice."
+
+Pripisovanie pozície:
+"SaS to verejne priznáva, že zruší tento (trinásty, pozn.) dôchodok."
+
+Inštitucionálne tvrdenie:
+"Pán prezident vám to vrátil naspäť (zákon o hazarde, pozn.), nie s \
+nejakými detailnými pripomienkami, ale s tým, že celý zákon treba \
+zhodiť zo stola."
+
+Superlatív:
+"Veď ja už som nevidel dlhšiu rozpravu v parlamente, ako bola napr. \
+pri rušení Úradu na ochranu oznamovateľov."
+
+Zahraničná politika:
+"Kritizujeme Veľkú Britániu kvôli tomu, že financovala volebnú kampaň \
+Progresívneho Slovenska v roku 2023 cez nastrčených influencerov."
+
+Číselné:
+"42 % konsolidácie musí zvládať bežný občan."
 
 === IDENTIFIKÁCIA REČNÍKOV ===
 
 Pokús sa identifikovať rečníka podľa:
-1. Explicitné oslovenia v diskusii ("Pán minister...", "Pani poslankyňa...")
+1. Explicitné oslovenia ("Pán minister...", "Pani poslankyňa...")
 2. Sebapredstavenie ("Ja ako predseda vlády...")
 3. Kontextové indikátory
 Ak rečníka nevieš identifikovať, použi null.
-
-=== ZACHOVANIE PÔVODNÉHO ZNENIA ===
-
-Tvrdenie zachovaj čo najbližšie pôvodnému zneniu rečníka. NE parafrázuj. \
-Ak je tvrdenie rozdelené cez viacero segmentov, spoj ho do jednej \
-koherentnej vety, ale zachovaj pôvodné slová.
 
 === MAPOVANIE NA ČASOVÉ ZNAČKY ===
 
@@ -56,7 +106,7 @@ a end_time posledného segmentu, v ktorom končí.
 Odpovedz VÝHRADNE ako JSON pole objektov:
 [
   {
-    "text": "<presný text faktického tvrdenia>",
+    "text": "<úplný, kontextovo zrozumiteľný text tvrdenia>",
     "speaker": "<meno rečníka alebo null>",
     "start_time": <čas začiatku v sekundách>,
     "end_time": <čas konca v sekundách>,

@@ -81,7 +81,6 @@ async def _run_analysis_from_audio(
     Assumes audio_path is a 16kHz mono WAV ready for whisper.cpp.
     Updates job store with progress. Does NOT handle cleanup.
     """
-    enable_research = verification_mode == "full"
     llm_client = get_openrouter_client()
 
     # Step 2: Transcription
@@ -131,7 +130,6 @@ async def _run_analysis_from_audio(
             stmt.text,
             llm_client,
             similarity_threshold,
-            enable_research,
         )
         vs = _build_verified_statement(stmt, result)
         verified.append(vs.model_dump())

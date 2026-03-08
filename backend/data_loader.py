@@ -1,9 +1,12 @@
+import logging
 import os
 import tempfile
 from threading import Lock
 
 import pandas as pd
 from backend.config import VYROKY_CSV_PATH, CLANKY_CSV_PATH
+
+logger = logging.getLogger(__name__)
 
 _vyroky_df: pd.DataFrame | None = None
 _clanky_df: pd.DataFrame | None = None
@@ -13,8 +16,16 @@ _lock = Lock()
 def load_dataframes():
     """Load both CSV files into memory. Called once at startup."""
     global _vyroky_df, _clanky_df
-    _vyroky_df = pd.read_csv(VYROKY_CSV_PATH, delimiter=";").fillna("")
-    _clanky_df = pd.read_csv(CLANKY_CSV_PATH, delimiter=";").fillna("")
+    try:
+        _vyroky_df = pd.read_csv(VYROKY_CSV_PATH, delimiter=";").fillna("")
+    except FileNotFoundError:
+        logger.warning("Vyroky CSV not found at %s — starting with empty data", VYROKY_CSV_PATH)
+        _vyroky_df = pd.DataFrame()
+    try:
+        _clanky_df = pd.read_csv(CLANKY_CSV_PATH, delimiter=";").fillna("")
+    except FileNotFoundError:
+        logger.warning("Clanky CSV not found at %s — starting with empty data", CLANKY_CSV_PATH)
+        _clanky_df = pd.DataFrame()
 
 
 def get_vyroky_df() -> pd.DataFrame:

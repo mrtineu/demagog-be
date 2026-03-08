@@ -139,6 +139,8 @@ def get_video_analysis(filename: str):
         raise HTTPException(404, "Analysis not found for this video")
 
     data = json.loads(sidecar.read_text(encoding="utf-8"))
+    if not data:
+        raise HTTPException(404, "Analysis data is empty")
     return VideoAnalysisResponse(
         job_id=data.get("job_id", ""),
         status=data.get("status", "completed"),

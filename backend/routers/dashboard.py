@@ -4,16 +4,9 @@ from fastapi import APIRouter, Query, HTTPException
 
 from backend.models import DashboardStats, PartyStats, TopicStats, PoliticianStats
 from backend.data_loader import get_vyroky_df
+from shared.verdicts import VERDICT_MAP as _VERDICT_MAP
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
-
-_VERDICT_MAP = {
-    "Pravda": "true",
-    "Nepravda": "false",
-    "Zavádzajúce": "misleading",
-    "Neoveriteľné": "uncheckable",
-    "Neviem posúdiť": "uncheckable",
-}
 
 
 def _politician_id(name: str) -> str:

@@ -1,30 +1,22 @@
 import asyncio
 import json
 import logging
-import os
 
 from fastapi import APIRouter, HTTPException
 from openai import AsyncOpenAI
 
 from backend.models import ChatRequest, ChatResponse
 from backend.qdrant_service import get_qdrant_client, embed
-from backend.config import COLLECTION_NAME
+from backend.config import COLLECTION_NAME, LLM_MODEL, OPENROUTER_KEY
+from shared.verdicts import VERDICT_MAP as _VERDICT_MAP
 
 router = APIRouter(prefix="/api", tags=["chat"])
 logger = logging.getLogger(__name__)
 
-LLM_MODEL = "google/gemini-3-flash-preview"
 LLM_TEMPERATURE = 0.3
 TOP_K = 5
 THRESHOLD = 0.5
 MAX_TOOL_ROUNDS = 5  # safety cap on the agentic loop
-
-_VERDICT_MAP = {
-    "Pravda": "true",
-    "Nepravda": "false",
-    "Zavádzajúce": "misleading",
-    "Neoveriteľné": "uncheckable",
-}
 
 SYSTEM_PROMPT = """\
 Si asistent portálu Demagog.sk — overovateľa politických výrokov. Používateľ ti \
@@ -77,14 +69,13 @@ _openrouter_client: AsyncOpenAI | None = None
 def _get_openrouter_client() -> AsyncOpenAI:
     global _openrouter_client
     if _openrouter_client is None:
-        api_key = os.getenv("OPENROUTER_KEY")
-        if not api_key:
+        if not OPENROUTER_KEY:
             raise HTTPException(
                 status_code=503,
                 detail="OPENROUTER_KEY not configured on the server.",
             )
         _openrouter_client = AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1", api_key=api_key
+            base_url="https://openrouter.ai/api/v1", api_key=OPENROUTER_KEY
         )
     return _openrouter_client
 

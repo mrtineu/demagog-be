@@ -103,6 +103,12 @@ class JobProgress(BaseModel):
     error_message: Optional[str] = None
 
 
+class VideoListItem(BaseModel):
+    filename: str
+    video_url: str
+    size_bytes: int
+
+
 class VideoAnalysisResponse(BaseModel):
     job_id: str
     status: JobStatus

@@ -11,6 +11,7 @@ from backend.models_video import (
     JobProgress,
     JobStatus,
     VideoAnalysisResponse,
+    VideoListItem,
     Transcript,
     ExtractedStatement,
     VerifiedStatement,
@@ -21,28 +22,24 @@ from backend.services.video_analysis_service import process_video_analysis
 router = APIRouter(prefix="/api", tags=["video"])
 
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".wav", ".ogg"}
+VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
 
 
-@router.get("/videos", response_model=list[VideoAnalysisResponse])
+@router.get("/videos", response_model=list[VideoListItem])
 def get_all_videos():
-    """Return all video analysis jobs stored in the database."""
-    all_jobs = job_store.get_all_jobs()
+    """List all uploaded videos by scanning the upload directory."""
+    if not VIDEO_UPLOAD_DIR.is_dir():
+        return []
     results = []
-    for jid, job in all_jobs.items():
-        video_url = f"/api/video/file/{jid}" if job.get("video_filename") else None
-        results.append(
-            VideoAnalysisResponse(
-                job_id=jid,
-                status=job["status"],
-                video_url=video_url,
-                transcript=job.get("transcript"),
-                extracted_statements=job.get("extracted_statements", []),
-                verified_statements=job.get("verified_statements", []),
-                video_duration_seconds=job.get("video_duration_seconds"),
-                processing_time_seconds=job.get("processing_time_seconds"),
-                error_message=job.get("error_message"),
+    for path in VIDEO_UPLOAD_DIR.iterdir():
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
+            results.append(
+                VideoListItem(
+                    filename=path.name,
+                    video_url=f"/api/video/file/{path.name}",
+                    size_bytes=path.stat().st_size,
+                )
             )
-        )
     return results
 
 
@@ -123,7 +120,7 @@ def get_job_result(job_id: str):
     if job["status"] not in ("completed", "failed"):
         raise HTTPException(202, "Still processing")
 
-    video_url = f"/api/video/file/{job_id}" if job.get("video_filename") else None
+    video_url = f"/api/video/file/{job['video_filename']}" if job.get("video_filename") else None
     return VideoAnalysisResponse(
         job_id=job_id,
         status=job["status"],
@@ -137,22 +134,19 @@ def get_job_result(job_id: str):
     )
 
 
-@router.get("/video/file/{job_id}")
-def get_video_file(job_id: str):
-    """Serve the uploaded video file for frontend playback."""
-    job = job_store.get_job(job_id)
-    if job is None:
-        raise HTTPException(404, "Job not found")
+@router.get("/video/file/{filename}")
+def get_video_file(filename: str):
+    """Serve an uploaded video file for frontend playback."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(400, "Invalid filename")
 
-    filename = job.get("video_filename")
-    if not filename:
-        raise HTTPException(404, "Video file not available")
-
-    path = VIDEO_UPLOAD_DIR / filename
+    path = (VIDEO_UPLOAD_DIR / filename).resolve()
+    if not path.is_relative_to(VIDEO_UPLOAD_DIR.resolve()):
+        raise HTTPException(400, "Invalid filename")
     if not path.is_file():
-        raise HTTPException(404, "Video file not found on disk")
+        raise HTTPException(404, "Video file not found")
 
-    suffix = Path(filename).suffix.lower()
+    suffix = path.suffix.lower()
     media_types = {
         ".mp4": "video/mp4",
         ".mkv": "video/x-matroska",

@@ -1,7 +1,10 @@
 """Audio extraction from video files using ffmpeg."""
 
+import shutil
 import subprocess
 from pathlib import Path
+
+FFMPEG_BIN = shutil.which("ffmpeg") or "/usr/bin/ffmpeg"
 
 
 def extract_audio(video_path: str | Path, output_format: str = "wav") -> Path:
@@ -23,7 +26,7 @@ def extract_audio(video_path: str | Path, output_format: str = "wav") -> Path:
     audio_path = video_path.with_suffix(f".{output_format}")
 
     cmd = [
-        "ffmpeg",
+        FFMPEG_BIN,
         "-i", str(video_path),
         "-vn",                   # strip video
         "-acodec", "pcm_s16le",  # 16-bit PCM WAV

@@ -42,3 +42,9 @@ def get_job(job_id: str) -> dict[str, Any] | None:
         if job is not None:
             return dict(job)
         return None
+
+
+def get_all_jobs() -> dict[str, dict[str, Any]]:
+    """Return a copy of all jobs."""
+    with _lock:
+        return {jid: dict(data) for jid, data in _jobs.items()}

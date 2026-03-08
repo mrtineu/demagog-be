@@ -8,7 +8,6 @@ import logging
 import time
 from pathlib import Path
 
-from backend.config import VIDEO_UPLOAD_DIR
 from backend.models_video import (
     ExtractedStatement,
     SourceInfo,
@@ -21,7 +20,6 @@ from backend.services.transcription_service import transcribe_audio
 from backend.services.statement_extraction_service import extract_statements
 from backend.services.verification_service import verify_statement
 from backend.services.llm_client import get_openrouter_client
-from backend.services.youtube_service import download_youtube_audio, YouTubeDownloadError
 
 logger = logging.getLogger(__name__)
 
@@ -68,72 +66,6 @@ async def process_video_analysis(
         )
     finally:
         _cleanup_temp_files(video_path, audio_path)
-
-
-async def process_youtube_analysis(
-    job_id: str,
-    youtube_url: str,
-    verification_mode: str,
-    similarity_threshold: float,
-    language: str,
-) -> None:
-    """YouTube video analysis pipeline. Runs as a background task.
-
-    Steps:
-        0. Download audio from YouTube (yt-dlp)
-        1. Convert to 16kHz mono WAV (ffmpeg via extract_audio)
-        2-5. Shared pipeline (transcribe, extract, verify, complete)
-    """
-    start_time = time.time()
-    downloaded_path: Path | None = None
-    audio_path: Path | None = None
-
-    try:
-        # Step 0: Download audio from YouTube
-        job_store.update_job(
-            job_id,
-            status="downloading_audio",
-            current_step="Stahujem zvuk z YouTube...",
-            progress_percent=2,
-        )
-        downloaded_path = await asyncio.to_thread(
-            download_youtube_audio, youtube_url, VIDEO_UPLOAD_DIR,
-        )
-        job_store.update_job(job_id, progress_percent=5)
-
-        # Step 1: Convert downloaded audio to 16kHz mono WAV
-        job_store.update_job(
-            job_id,
-            status="extracting_audio",
-            current_step="Konvertujem zvuk...",
-            progress_percent=8,
-        )
-        audio_path = await asyncio.to_thread(extract_audio, downloaded_path)
-        job_store.update_job(job_id, progress_percent=10)
-
-        # Steps 2-5: Shared pipeline
-        await _run_analysis_from_audio(
-            job_id, audio_path, verification_mode,
-            similarity_threshold, language, start_time,
-        )
-
-    except YouTubeDownloadError as e:
-        logger.warning("YouTube download failed for job %s: %s", job_id, e)
-        job_store.update_job(
-            job_id, status="failed", error_message=str(e),
-        )
-    except ValueError as e:
-        logger.warning("YouTube video too long for job %s: %s", job_id, e)
-        job_store.update_job(
-            job_id, status="failed", error_message=str(e),
-        )
-    except Exception as e:
-        logger.exception("YouTube analysis failed for job %s", job_id)
-        job_store.update_job(
-            job_id, status="failed", error_message=str(e),
-        )
-    finally:
-        _cleanup_temp_files(downloaded_path, audio_path)
 
 
 async def _run_analysis_from_audio(

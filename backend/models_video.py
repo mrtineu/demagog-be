@@ -10,7 +10,6 @@ class VerificationMode(str, Enum):
 
 class JobStatus(str, Enum):
     pending = "pending"
-    downloading_audio = "downloading_audio"
     extracting_audio = "extracting_audio"
     transcribing = "transcribing"
     extracting_statements = "extracting_statements"

@@ -3,7 +3,7 @@ import uuid
 import requests
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct
-from backend.config import EC2_IP, QDRANT_PORT, INFINITY_PORT, COLLECTION_NAME, EMBEDDING_MODEL
+from backend.config import EC2_IP, QDRANT_PORT, INFINITY_PORT, COLLECTION_NAME, CLANKY_RAG_COLLECTION, EMBEDDING_MODEL
 
 _qdrant_client: QdrantClient | None = None
 
@@ -61,3 +61,38 @@ def upsert_vyrok(payload: dict) -> None:
     )
     client = get_qdrant_client()
     client.upsert(collection_name=COLLECTION_NAME, points=[point])
+
+
+# ---------------------------------------------------------------------------
+# Articles RAG search (clanky_rag collection)
+# ---------------------------------------------------------------------------
+
+
+def search_articles(query_text: str, top_k: int = 5) -> list[dict]:
+    """Embed a query and search the articles RAG collection for similar chunks.
+
+    Each result contains the matching chunk text, its master summary,
+    article metadata, and the similarity score — ready for downstream LLM
+    generation.
+    """
+    vector = embed(query_text)
+    client = get_qdrant_client()
+    response = client.query_points(
+        collection_name=CLANKY_RAG_COLLECTION,
+        query=vector,
+        limit=top_k,
+        with_payload=True,
+    )
+    results = []
+    for hit in response.points:
+        payload = hit.payload or {}
+        results.append({
+            "score": hit.score,
+            "original_chunk_text": payload.get("original_chunk_text", ""),
+            "master_summary": payload.get("master_summary", ""),
+            "article_id": payload.get("article_id", ""),
+            "chunk_index": payload.get("chunk_index", 0),
+            "datum": payload.get("datum", ""),
+            "autor": payload.get("autor", ""),
+        })
+    return results

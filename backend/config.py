@@ -8,6 +8,7 @@ EC2_IP = os.getenv("EC2_IP", "13.48.59.38")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
 INFINITY_PORT = int(os.getenv("INFINITY_PORT", "7997"))
 COLLECTION_NAME = os.getenv("COLLECTION_NAME", "test_3")
+CLANKY_RAG_COLLECTION = os.getenv("CLANKY_RAG_COLLECTION", "clanky_rag")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 
 # CSV paths relative to project root (demagog-be/)

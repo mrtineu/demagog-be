@@ -120,6 +120,7 @@ def build_verification_result(
         "pouzity_prah": threshold,
         "pocet_nad_prahom": len(db_results),
         "pocet_celkom": len(all_raw_results),
+        "all_results": all_raw_results,
     }
 
     idx = llm_response.get("index_zhody")
@@ -158,6 +159,7 @@ def build_no_data_result(
         "pouzity_prah": threshold,
         "pocet_nad_prahom": 0,
         "pocet_celkom": len(all_raw_results),
+        "all_results": all_raw_results,
     }
 
 
@@ -209,6 +211,7 @@ def verify_statement(
             "pouzity_prah": threshold,
             "pocet_nad_prahom": len(above_threshold),
             "pocet_celkom": len(all_results),
+            "all_results": all_results,
         }
 
     # Step 3: LLM evaluation

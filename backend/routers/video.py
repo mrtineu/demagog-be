@@ -166,6 +166,58 @@ def get_job_status(job_id: str):
     )
 
 
+@router.post("/video/reanalyze/{filename}", response_model=JobProgress)
+def reanalyze_video(
+    filename: str,
+    background_tasks: BackgroundTasks,
+    verification_mode: str = Form("db_only"),
+    similarity_threshold: float = Form(0.6),
+    language: str = Form("sk"),
+    participants: str = Form(""),
+):
+    """Re-run analysis on an already uploaded video."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(400, "Invalid filename")
+
+    video_path = (VIDEO_UPLOAD_DIR / filename).resolve()
+    if not video_path.is_relative_to(VIDEO_UPLOAD_DIR.resolve()):
+        raise HTTPException(400, "Invalid filename")
+    if not video_path.is_file():
+        raise HTTPException(404, "Video file not found")
+
+    if verification_mode not in ("db_only", "full"):
+        raise HTTPException(400, f"Invalid verification_mode: {verification_mode}")
+
+    parsed_participants: list[dict] | None = None
+    if participants and participants.strip():
+        try:
+            parsed_participants = json.loads(participants)
+            if not isinstance(parsed_participants, list):
+                raise HTTPException(400, "participants must be a JSON array")
+        except json.JSONDecodeError:
+            raise HTTPException(400, "participants must be valid JSON")
+
+    # Delete old sidecar if it exists
+    sidecar = VIDEO_UPLOAD_DIR.resolve() / f"{filename}.json"
+    if sidecar.is_file():
+        sidecar.unlink()
+
+    job_id = job_store.create_job()
+    job_store.update_job(job_id, video_filename=filename)
+
+    background_tasks.add_task(
+        process_video_analysis,
+        job_id,
+        video_path,
+        verification_mode,
+        similarity_threshold,
+        language,
+        parsed_participants,
+    )
+
+    return JobProgress(job_id=job_id, status=JobStatus.pending)
+
+
 @router.get("/video/analysis/{filename}", response_model=VideoAnalysisResponse)
 def get_video_analysis(filename: str):
     """Get the full analysis for a video by its filename (stable ID)."""

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 TOP_K = 5
 DEFAULT_THRESHOLD = 0.6
 MIN_WORD_COUNT = 4
-MIN_LENGTH_RATIO = 0.5
+MIN_LENGTH_RATIO = 0.2
 
 
 # -- Helper functions --

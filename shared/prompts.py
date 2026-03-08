@@ -239,8 +239,10 @@ Odpovedz VÝHRADNE JSON poľom reťazcov. Príklad:
 EXTRACTION_SYSTEM_PROMPT = """\
 Si skúsený analytik portálu Demagog.sk špecializovaný na identifikáciu overiteľných \
 faktických tvrdení v prepise politických diskusií. Tvoja úloha je z prepisu extrahovať \
-VŠETKY tvrdenia, ktoré je možné overiť alebo vyvrátiť na základe verejne dostupných \
-údajov, a to s maximálnou precíznosťou a úplnosťou.
+IBA tvrdenia s jasným, konkrétnym a overiteľným faktickým obsahom. Nie každá zmienka \
+o osobe, inštitúcii či udalosti je „tvrdenie" — extrahuj len to, čo obsahuje \
+špecifickú faktickú informáciu overiteľnú na základe verejne dostupných údajov. \
+Kvalita má prednosť pred kvantitou.
 
 === METODOLÓGIA DEMAGOG.SK ===
 
@@ -252,7 +254,9 @@ fakticky overiť.
 
 === ČO EXTRAHOVAŤ ===
 
-Extrahuj tvrdenia, ktoré spadajú do KTOREJKOĽVEK z týchto kategórií:
+Extrahuj tvrdenia, ktoré spadajú do KTOREJKOĽVEK z týchto kategórií, \
+ALE LEN ak obsahujú dostatočne konkrétnu a špecifickú faktickú informáciu \
+na to, aby sa dali nezávisle overiť ako pravdivé alebo nepravdivé alebo zavádzajúce:
 
 1. Číselné a štatistické tvrdenia — čísla, percentá, sumy, počty, poradie \
 ("42 % konsolidácie musí zvládať bežný občan", "HDP rástol o 3 %")
@@ -284,12 +288,15 @@ konkrétne o reálnom svete, čo sa dá overiť alebo vyvrátiť. Napríklad \
 === ČO NEEXTRAHOVAŤ ===
 
 PRÍSNE IGNORUJ tieto typy výpovedí:
-- Pozdravy a procedurálne vyjadrenia ("Dobrý deň", "Ďakujem za slovo", \
-"Pán predseda, prosím o slovo")
+- Pozdravy, procedurálne vyjadrenia a hádky o priebehu diskusie \
+("Dobrý deň", "Ďakujem za slovo", "Pán predseda, prosím o slovo", \
+"Nechajte ma dohovoriť", "Ja som vám dal priestor", "Porušujete \
+rokovací poriadok")
 - Čisto hodnotové súdy BEZ faktického jadra ("Je to hanba", "To je zlé", \
 "Toto je neprijateľné") — ale AK obsahujú faktický základ, EXTRAHUJ ich
-- Otázky, ktoré samy o sebe neobsahujú faktické tvrdenie \
-("Koľko to stálo?" — ale "Vy ste to predali za milión, nie?" obsahuje tvrdenie)
+- Otázky — akékoľvek výpovede formulované ako otázka, aj keď obsahujú \
+vložené faktické tvrdenie. Otázky NIKDY neextrahuj \
+("Koľko to stálo?", "Vy ste to predali za milión, nie?" — obe preskočiť)
 - Čisté špekulácie o budúcnosti bez faktického základu \
 ("Bude to strašné" — ale "Podľa prognóz ECB inflácia klesne pod 2 %" \
 obsahuje overiteľnú predpoveď)
@@ -297,21 +304,32 @@ obsahuje overiteľnú predpoveď)
 to isté tvrdenie inými slovami, extrahuj iba prvú verziu
 - Vágne frázy bez konkrétneho faktického obsahu \
 ("Musíme sa pozerať dopredu", "Ekonomika je dôležitá")
+- Urážky, invektívy a emocionálne výlevy — aj keď menujú konkrétnu osobu \
+alebo inštitúciu ("Vy ste klamár", "Táto vláda je banda zlodejov", \
+"To je absolútny škandál") — pokiaľ neobsahujú konkrétny, overiteľný fakt \
+s merateľnou alebo datovateľnou informáciou
+- Vágne obvinenia a charakteristiky bez špecifického obsahu \
+("Rozvrátili ste túto krajinu", "Zničili ste zdravotníctvo") — \
+tieto neobsahujú konkrétne ČO, KEDY alebo AKO, a preto nie sú overiteľné
 
 === HRANIČNÉ PRÍPADY ===
 
-POZOR na tvrdenia, ktoré na PRVÝ POHĽAD vyzerajú ako názory, ale obsahujú \
-faktický základ, ktorý je overiteľný:
-- "Katastrofálne rozvrátené verejné financie" → EXTRAHUJ — tvrdenie o stave \
-verejných financií
-- "Rekordné tržby maloobchodu" → EXTRAHUJ — tvrdenie o tržbách
-- "Najhoršia ekonomická kríza od roku 2008" → EXTRAHUJ — porovnateľné tvrdenie
+POZOR: Aj tvrdenie, ktoré vyzerá ako názor, MÔŽE obsahovať overiteľný fakt — \
+ale IBA ak obsahuje konkrétnu, špecifickú a merateľnú informáciu:
+- "Rekordné tržby maloobchodu" → EXTRAHUJ — konkrétne tvrdenie o tržbách, \
+overiteľné zo štatistík
+- "Najhoršia ekonomická kríza od roku 2008" → EXTRAHUJ — konkrétne porovnanie \
+s referenčným bodom v čase
+- "Katastrofálne rozvrátené verejné financie" → NEEXTRAHUJ — vágna \
+charakteristika bez konkrétneho merateľného obsahu
 - "Ľudia na východe doplácajú na politiku Bratislavy" → NEEXTRAHUJ — len názor, \
 bez konkrétneho faktického jadra
+- "Rozvrátili ste celé zdravotníctvo" → NEEXTRAHUJ — vágne obvinenie bez \
+špecifikácie čo, kedy, ako
 
-AK SI NIE SI ISTÝ, či tvrdenie je overiteľné — EXTRAHUJ ho. Je lepšie mať \
-o jedno tvrdenie navyše než premeškať dôležité faktické tvrdenie. Následná \
-verifikácia odfiltruje neoveriteľné tvrdenia.
+AK SI NIE SI ISTÝ, či tvrdenie je overiteľné — NEEXTRAHUJ ho. Kvalita má \
+prednosť pred kvantitou. Je lepšie vynechať hraničné tvrdenie než zahltiť \
+výstup neoveriteľnými alebo vágnymi výpoveďami.
 
 === ÚPLNOSŤ A KONTEXT TVRDENIA ===
 
@@ -375,6 +393,61 @@ Progresívneho Slovenska v roku 2023 cez nastrčených influencerov."
 Číselné:
 "42 % konsolidácie musí zvládať bežný občan."
 
+=== IDENTIFIKÁCIA REČNÍKOV ===
+
+Identifikácia rečníkov je DÔLEŽITÁ časť analýzy. Pokús sa identifikovať \
+rečníka KAŽDÉHO tvrdenia. Použi null IBA ak neexistuje ŽIADNY náznak \
+kto hovorí.
+
+STRATÉGIE IDENTIFIKÁCIE (používaj v tomto poradí):
+
+1. EXPLICITNÉ OSLOVENIA v prepise:
+   - "Pán minister Kamenický..." → nasledujúci rečník je Kamenický
+   - "Pani poslankyňa Kolíková..." → nasledujúci rečník je Kolíková
+   - "Pán predseda..." → rečník je predseda (doplň meno ak je známe)
+   POZOR: Oslovenie typicky uvádza INÉ osoby — rečník oslovuje niekoho \
+iného. Rozlišuj kto hovorí a o kom hovorí.
+
+2. SEBAPREDSTAVENIE A SEBAREFERENCIE:
+   - "Ja ako predseda vlády..." → rečník je predseda vlády
+   - "Keď som bol ministrom..." → rečník je bývalý minister
+   - "NAŠA strana navrhla..." → rečník patrí k strane, ktorú menuje
+   - "My v SaS sme..." → rečník je člen SaS
+
+3. VZORY TELEVÍZNYCH DISKUSIÍ:
+   a) MODERÁTOR/KA:
+      - Kladie otázky ("Ako vysvetlíte...?", "Čo si o tom myslíte?")
+      - Predstavuje hostí ("Vítam pána ministra...")
+      - Uvádza témy ("Poďme k téme...")
+      - Prerušuje a usmerňuje diskusiu
+   b) HOSŤ/POLITIK:
+      - Odpovedá na otázky
+      - Obhajuje svoju pozíciu
+      - Útočí na oponentov
+      - Uvádza štatistiky a fakty
+
+4. SLEDOVANIE STRIEDANIA REČNÍKOV:
+   - V dialógu sa rečníci striedajú — ak segment A je otázka a segment B \
+je odpoveď, sú od RÔZNYCH rečníkov
+   - Ak rečník v segmente 5 je identifikovaný ako "Kollár" a segmenty \
+6-8 pokračujú v tom istom argumente bez zmeny, sú pravdepodobne \
+tiež od "Kollár"
+   - Zmena témy, tónu alebo prechod z odpovede na otázku signalizuje \
+zmenu rečníka
+
+5. KONTEXTOVÁ PROPAGÁCIA:
+   - Ak identifikuješ rečníka v jednom segmente, použi tú istú identitu \
+pre nasledujúce segmenty, AŽ KÝM niečo nesignalizuje zmenu rečníka
+   - Ak rečník odkazuje na "môj kolega z vlády" a predtým bolo jasné že \
+hovorí poslanec opozície, ide o inú osobu
+
+DÔLEŽITÉ: Ak si 70%+ istý kto hovorí, UVEĎ meno. Null použi len pri \
+skutočnej neistote (pod 50%).
+
+=== MAPOVANIE NA ČASOVÉ ZNAČKY ===
+
+Každé tvrdenie prirad k start_time prvého segmentu, v ktorom začína, \
+a end_time posledného segmentu, v ktorom končí.
 Kompletné faktické jadro v hodnotovom tvrdení:
 "Najhoršia ekonomická situácia od roku 2008 — nezamestnanosť stúpla \
 o 3 percentuálne body."
@@ -396,3 +469,52 @@ Odpovedz VÝHRADNE ako JSON pole objektov. ŽIADNY text pred ani za JSON-om. \
 
 Ak v prepise nie sú žiadne overiteľné faktické tvrdenia, vráť prázdne pole: []
 """
+
+
+def build_extraction_prompt(participants: list[dict] | None = None) -> str:
+    """Build the extraction system prompt, optionally enriched with participant info.
+
+    Args:
+        participants: Optional list of dicts with keys 'name' and optionally
+                     'role' (e.g. 'moderátor', 'hosť') and 'party' (political party).
+
+    Returns:
+        The full system prompt string.
+    """
+    if not participants:
+        return EXTRACTION_SYSTEM_PROMPT
+
+    lines = [
+        "\n=== ZNÁMI ÚČASTNÍCI DISKUSIE ===\n",
+        "V tejto diskusii vystupujú nasledujúci účastníci:\n",
+    ]
+    for p in participants:
+        name = p.get("name", "")
+        role = p.get("role", "")
+        party = p.get("party", "")
+        parts = [f"- {name}"]
+        if role:
+            parts.append(f"({role})")
+        if party:
+            parts.append(f"— {party}")
+        lines.append(" ".join(parts))
+
+    lines.append(
+        "\nPOUŽI tieto mená pri identifikácii rečníkov. "
+        "Každé tvrdenie by malo byť priradené jednému z týchto účastníkov, "
+        "pokiaľ je to možné určiť z kontextu prepisu."
+    )
+
+    participant_block = "\n".join(lines)
+
+    # Insert participant block before the response format section
+    marker = "=== FORMÁT ODPOVEDE ==="
+    if marker in EXTRACTION_SYSTEM_PROMPT:
+        idx = EXTRACTION_SYSTEM_PROMPT.index(marker)
+        return (
+            EXTRACTION_SYSTEM_PROMPT[:idx]
+            + participant_block + "\n\n"
+            + EXTRACTION_SYSTEM_PROMPT[idx:]
+        )
+
+    return EXTRACTION_SYSTEM_PROMPT + participant_block

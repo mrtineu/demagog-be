@@ -1,8 +1,10 @@
 """Video analysis API endpoints."""
 
 import json
+import logging
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -22,24 +24,43 @@ from backend.services.video_analysis_service import process_video_analysis
 
 router = APIRouter(prefix="/api", tags=["video"])
 
+logger = logging.getLogger(__name__)
+
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".wav", ".ogg"}
 VIDEO_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm"}
+
+
+@router.get("/videos/debug")
+def debug_video_dir():
+    """Debug endpoint to check video directory resolution."""
+    resolved = VIDEO_UPLOAD_DIR.resolve()
+    files = []
+    if resolved.is_dir():
+        files = [f.name for f in resolved.iterdir()]
+    return {
+        "VIDEO_UPLOAD_DIR": str(VIDEO_UPLOAD_DIR),
+        "resolved": str(resolved),
+        "exists": resolved.is_dir(),
+        "files": files,
+    }
 
 
 @router.get("/videos", response_model=list[VideoListItem])
 def get_all_videos():
     """List all uploaded videos by scanning the upload directory."""
-    if not VIDEO_UPLOAD_DIR.is_dir():
+    resolved = VIDEO_UPLOAD_DIR.resolve()
+    if not resolved.is_dir():
+        logger.warning("Video upload dir does not exist: %s", resolved)
         return []
 
     results = []
-    for path in VIDEO_UPLOAD_DIR.iterdir():
+    for path in resolved.iterdir():
         if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
-            sidecar = VIDEO_UPLOAD_DIR / f"{path.name}.json"
+            sidecar = resolved / f"{path.name}.json"
             results.append(
                 VideoListItem(
                     filename=path.name,
-                    video_url=f"/api/video/file/{path.name}",
+                    video_url=f"/api/video/file/{quote(path.name)}",
                     size_bytes=path.stat().st_size,
                     has_analysis=sidecar.is_file(),
                 )
@@ -54,6 +75,7 @@ async def analyze_video(
     verification_mode: str = Form("db_only"),
     similarity_threshold: float = Form(0.6),
     language: str = Form("sk"),
+    participants: str = Form(""),
 ):
     """Upload a video and start the analysis pipeline.
 
@@ -68,6 +90,23 @@ async def analyze_video(
     if verification_mode not in ("db_only", "full"):
         raise HTTPException(400, f"Invalid verification_mode: {verification_mode}")
 
+    # Parse participants (optional JSON string)
+    parsed_participants: list[dict] | None = None
+    if participants and participants.strip():
+        try:
+            parsed_participants = json.loads(participants)
+            if not isinstance(parsed_participants, list):
+                raise HTTPException(400, "participants must be a JSON array")
+            for p in parsed_participants:
+                if not isinstance(p, dict) or not p.get("name"):
+                    raise HTTPException(
+                        400,
+                        "Each participant must have at least a 'name' field",
+                    )
+        except json.JSONDecodeError:
+            raise HTTPException(400, "participants must be valid JSON")
+
+    # Save uploaded file
     # Save uploaded file with original name
     VIDEO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     original_name = Path(file.filename or f"video{suffix}").name
@@ -103,6 +142,7 @@ async def analyze_video(
         verification_mode,
         similarity_threshold,
         language,
+        parsed_participants,
     )
 
     return JobProgress(job_id=job_id, status=JobStatus.pending)
@@ -124,6 +164,58 @@ def get_job_status(job_id: str):
         statements_verified=job.get("statements_verified"),
         error_message=job.get("error_message"),
     )
+
+
+@router.post("/video/reanalyze/{filename}", response_model=JobProgress)
+def reanalyze_video(
+    filename: str,
+    background_tasks: BackgroundTasks,
+    verification_mode: str = Form("db_only"),
+    similarity_threshold: float = Form(0.6),
+    language: str = Form("sk"),
+    participants: str = Form(""),
+):
+    """Re-run analysis on an already uploaded video."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(400, "Invalid filename")
+
+    video_path = (VIDEO_UPLOAD_DIR / filename).resolve()
+    if not video_path.is_relative_to(VIDEO_UPLOAD_DIR.resolve()):
+        raise HTTPException(400, "Invalid filename")
+    if not video_path.is_file():
+        raise HTTPException(404, "Video file not found")
+
+    if verification_mode not in ("db_only", "full"):
+        raise HTTPException(400, f"Invalid verification_mode: {verification_mode}")
+
+    parsed_participants: list[dict] | None = None
+    if participants and participants.strip():
+        try:
+            parsed_participants = json.loads(participants)
+            if not isinstance(parsed_participants, list):
+                raise HTTPException(400, "participants must be a JSON array")
+        except json.JSONDecodeError:
+            raise HTTPException(400, "participants must be valid JSON")
+
+    # Delete old sidecar if it exists
+    sidecar = VIDEO_UPLOAD_DIR.resolve() / f"{filename}.json"
+    if sidecar.is_file():
+        sidecar.unlink()
+
+    job_id = job_store.create_job()
+    job_store.update_job(job_id, video_filename=filename)
+
+    background_tasks.add_task(
+        process_video_analysis,
+        job_id,
+        video_path,
+        verification_mode,
+        similarity_threshold,
+        language,
+        parsed_participants,
+    )
+
+    return JobProgress(job_id=job_id, status=JobStatus.pending)
 
 
 @router.get("/video/analysis/{filename}", response_model=VideoAnalysisResponse)

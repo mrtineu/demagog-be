@@ -19,6 +19,7 @@ from backend.services.audio_service import extract_audio
 from backend.services.transcription_service import transcribe_audio
 from backend.services.statement_extraction_service import extract_statements
 from backend.services.verification_service import verify_statement
+from backend.services.research_service import research_statement
 from backend.services.llm_client import get_openrouter_client
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,7 @@ async def process_video_analysis(
     verification_mode: str,
     similarity_threshold: float,
     language: str,
+    participants: list[dict] | None = None,
 ) -> None:
     """Full video analysis pipeline (file upload path). Runs as a background task.
 
@@ -55,6 +57,7 @@ async def process_video_analysis(
         await _run_analysis_from_audio(
             job_id, audio_path, verification_mode,
             similarity_threshold, language, start_time,
+            participants=participants,
         )
 
     except Exception as e:
@@ -75,6 +78,7 @@ async def _run_analysis_from_audio(
     similarity_threshold: float,
     language: str,
     start_time: float,
+    participants: list[dict] | None = None,
 ) -> None:
     """Shared pipeline: transcribe -> extract statements -> verify.
 
@@ -106,7 +110,8 @@ async def _run_analysis_from_audio(
         progress_percent=35,
     )
     statements = await asyncio.to_thread(
-        extract_statements, transcript.segments, llm_client
+        extract_statements, transcript.segments, llm_client,
+        None, participants,
     )
     job_store.update_job(
         job_id,
@@ -124,6 +129,8 @@ async def _run_analysis_from_audio(
     )
 
     verified: list[dict] = []
+    enable_research = verification_mode == "full"
+
     for i, stmt in enumerate(statements):
         result = await asyncio.to_thread(
             verify_statement,
@@ -131,6 +138,23 @@ async def _run_analysis_from_audio(
             llm_client,
             similarity_threshold,
         )
+
+        # Web research fallback when mode is "full" and DB found nothing
+        if enable_research and result.get("verdikt") == "Nedostatok dát":
+            job_store.update_job(
+                job_id,
+                current_step=f"Webový výskum pre tvrdenie {i + 1}/{len(statements)}...",
+            )
+            try:
+                research_result = await asyncio.to_thread(
+                    research_statement, stmt.text, llm_client
+                )
+                result = research_result
+            except Exception:
+                logger.warning(
+                    "Web research failed for statement %d, using DB result", i + 1
+                )
+
         vs = _build_verified_statement(stmt, result)
         verified.append(vs.model_dump())
 

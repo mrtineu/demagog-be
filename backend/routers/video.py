@@ -1,5 +1,6 @@
 """Video analysis API endpoints."""
 
+import json
 import uuid
 from pathlib import Path
 
@@ -30,16 +31,30 @@ def get_all_videos():
     """List all uploaded videos by scanning the upload directory."""
     if not VIDEO_UPLOAD_DIR.is_dir():
         return []
+
     results = []
     for path in VIDEO_UPLOAD_DIR.iterdir():
         if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
-            results.append(
-                VideoListItem(
-                    filename=path.name,
-                    video_url=f"/api/video/file/{path.name}",
-                    size_bytes=path.stat().st_size,
-                )
+            item = VideoListItem(
+                filename=path.name,
+                video_url=f"/api/video/file/{path.name}",
+                size_bytes=path.stat().st_size,
             )
+            # Load analysis from sidecar JSON if it exists
+            sidecar = VIDEO_UPLOAD_DIR / f"{path.name}.json"
+            if sidecar.is_file():
+                try:
+                    data = json.loads(sidecar.read_text(encoding="utf-8"))
+                    item.job_id = data.get("job_id")
+                    item.status = data.get("status")
+                    item.transcript = data.get("transcript")
+                    item.extracted_statements = data.get("extracted_statements", [])
+                    item.verified_statements = data.get("verified_statements", [])
+                    item.video_duration_seconds = data.get("video_duration_seconds")
+                    item.processing_time_seconds = data.get("processing_time_seconds")
+                except Exception:
+                    pass
+            results.append(item)
     return results
 
 
@@ -112,26 +127,50 @@ def get_job_status(job_id: str):
 
 @router.get("/video/result/{job_id}", response_model=VideoAnalysisResponse)
 def get_job_result(job_id: str):
-    """Get full results once processing is complete."""
+    """Get full results once processing is complete.
+
+    Checks the in-memory job store first (active jobs), then falls back
+    to sidecar JSON files on disk (persisted results).
+    """
+    # Try in-memory store first (active/recent jobs)
     job = job_store.get_job(job_id)
-    if job is None:
-        raise HTTPException(404, "Job not found")
+    if job is not None:
+        if job["status"] not in ("completed", "failed"):
+            raise HTTPException(202, "Still processing")
+        video_url = f"/api/video/file/{job['video_filename']}" if job.get("video_filename") else None
+        return VideoAnalysisResponse(
+            job_id=job_id,
+            status=job["status"],
+            video_url=video_url,
+            transcript=job.get("transcript"),
+            extracted_statements=job.get("extracted_statements", []),
+            verified_statements=job.get("verified_statements", []),
+            video_duration_seconds=job.get("video_duration_seconds"),
+            processing_time_seconds=job.get("processing_time_seconds"),
+            error_message=job.get("error_message"),
+        )
 
-    if job["status"] not in ("completed", "failed"):
-        raise HTTPException(202, "Still processing")
+    # Fall back to sidecar files on disk
+    if VIDEO_UPLOAD_DIR.is_dir():
+        for sidecar in VIDEO_UPLOAD_DIR.glob("*.json"):
+            try:
+                data = json.loads(sidecar.read_text(encoding="utf-8"))
+                if data.get("job_id") == job_id:
+                    video_filename = sidecar.stem  # e.g. abc.mp4 from abc.mp4.json
+                    return VideoAnalysisResponse(
+                        job_id=job_id,
+                        status=data.get("status", "completed"),
+                        video_url=f"/api/video/file/{video_filename}",
+                        transcript=data.get("transcript"),
+                        extracted_statements=data.get("extracted_statements", []),
+                        verified_statements=data.get("verified_statements", []),
+                        video_duration_seconds=data.get("video_duration_seconds"),
+                        processing_time_seconds=data.get("processing_time_seconds"),
+                    )
+            except Exception:
+                continue
 
-    video_url = f"/api/video/file/{job['video_filename']}" if job.get("video_filename") else None
-    return VideoAnalysisResponse(
-        job_id=job_id,
-        status=job["status"],
-        video_url=video_url,
-        transcript=job.get("transcript"),
-        extracted_statements=job.get("extracted_statements", []),
-        verified_statements=job.get("verified_statements", []),
-        video_duration_seconds=job.get("video_duration_seconds"),
-        processing_time_seconds=job.get("processing_time_seconds"),
-        error_message=job.get("error_message"),
-    )
+    raise HTTPException(404, "Job not found")
 
 
 @router.get("/video/file/{filename}")

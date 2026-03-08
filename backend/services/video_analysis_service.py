@@ -154,6 +154,9 @@ async def _run_analysis_from_audio(
         progress_percent=100,
     )
 
+    # Persist results as sidecar JSON next to the video file
+    _save_sidecar(job_id, elapsed)
+
 
 def _build_verified_statement(
     stmt: ExtractedStatement, result: dict
@@ -204,6 +207,36 @@ def _build_verified_statement(
         db_source=db_source,
         web_sources=web_sources,
     )
+
+
+def _save_sidecar(job_id: str, elapsed: float) -> None:
+    """Write analysis results to a JSON file next to the video."""
+    import json
+    from backend.config import VIDEO_UPLOAD_DIR
+
+    job = job_store.get_job(job_id)
+    if not job or not job.get("video_filename"):
+        return
+    sidecar_path = VIDEO_UPLOAD_DIR / f"{job['video_filename']}.json"
+    try:
+        sidecar_path.write_text(
+            json.dumps(
+                {
+                    "job_id": job_id,
+                    "status": job["status"],
+                    "transcript": job.get("transcript"),
+                    "extracted_statements": job.get("extracted_statements", []),
+                    "verified_statements": job.get("verified_statements", []),
+                    "video_duration_seconds": job.get("video_duration_seconds"),
+                    "processing_time_seconds": round(elapsed, 2),
+                },
+                ensure_ascii=False,
+                default=str,
+            ),
+            encoding="utf-8",
+        )
+    except Exception:
+        logger.exception("Failed to write sidecar for %s", job_id)
 
 
 def _cleanup_temp_files(*paths: Path | None) -> None:

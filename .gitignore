@@ -13,3 +13,4 @@ wheels/
 
 Vectorization/.venv
 .env
+backend/.env

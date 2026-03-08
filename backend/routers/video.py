@@ -68,10 +68,22 @@ async def analyze_video(
     if verification_mode not in ("db_only", "full"):
         raise HTTPException(400, f"Invalid verification_mode: {verification_mode}")
 
-    # Save uploaded file
+    # Save uploaded file with original name
     VIDEO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    video_filename = f"{uuid.uuid4().hex}{suffix}"
-    video_path = VIDEO_UPLOAD_DIR / video_filename
+    original_name = Path(file.filename or f"video{suffix}").name
+    # Sanitize: keep only the filename part, no path traversal
+    original_name = Path(original_name).name
+    video_path = VIDEO_UPLOAD_DIR / original_name
+
+    # Handle duplicate filenames by appending _1, _2, etc.
+    if video_path.exists():
+        stem = video_path.stem
+        counter = 1
+        while video_path.exists():
+            video_path = VIDEO_UPLOAD_DIR / f"{stem}_{counter}{suffix}"
+            counter += 1
+
+    video_filename = video_path.name
 
     content = await file.read()
     if len(content) > MAX_VIDEO_SIZE_MB * 1024 * 1024:

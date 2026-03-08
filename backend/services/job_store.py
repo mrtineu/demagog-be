@@ -24,6 +24,7 @@ def create_job() -> str:
             "statements_verified": None,
             "video_duration_seconds": None,
             "processing_time_seconds": None,
+            "video_filename": None,
         }
     return job_id
 

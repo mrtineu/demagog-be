@@ -164,25 +164,11 @@ def build_no_data_result(
 # -- Main verification pipeline --
 
 
-def _try_research_fallback(
-    statement: str, llm_client: OpenAI, original_result: dict
-) -> dict:
-    """Attempt web research fallback. Returns original result on failure."""
-    try:
-        from backend.services.research_service import research_statement
-
-        logger.info("Starting web research fallback for: %s", statement[:80])
-        return research_statement(statement, llm_client)
-    except Exception as e:
-        logger.warning("Web research fallback failed: %s", e)
-        return original_result
-
-
 def verify_statement(
     statement: str,
     llm_client: OpenAI,
     threshold: float = DEFAULT_THRESHOLD,
-    enable_research: bool = False,
+    top_k: int = TOP_K,
 ) -> dict:
     """Full verification pipeline for a single statement.
 
@@ -190,28 +176,22 @@ def verify_statement(
         statement: The political statement to verify.
         llm_client: OpenRouter client for LLM calls.
         threshold: Similarity score threshold for DB matching.
-        enable_research: Whether to fall back to web research if no DB match.
+        top_k: Number of similar results to retrieve from the database.
 
     Returns:
         Verification result dict with verdict, reasoning, and sources.
     """
     # Step 1: Search Qdrant
-    all_results = search_similar(statement, top_k=TOP_K)
+    all_results = search_similar(statement, top_k=top_k)
 
     if not all_results:
-        result = build_no_data_result(statement, all_results, threshold)
-        if enable_research:
-            return _try_research_fallback(statement, llm_client, result)
-        return result
+        return build_no_data_result(statement, all_results, threshold)
 
     # Step 2: Filter by threshold
     above_threshold = filter_by_threshold(all_results, threshold)
 
     if not above_threshold:
-        result = build_no_data_result(statement, all_results, threshold)
-        if enable_research:
-            return _try_research_fallback(statement, llm_client, result)
-        return result
+        return build_no_data_result(statement, all_results, threshold)
 
     # Step 2.5: Reject incomplete / fragmentary input (NO research for fragments)
     incomplete, reason = is_incomplete_statement(
@@ -235,12 +215,6 @@ def verify_statement(
     llm_response = call_llm(llm_client, statement, above_threshold)
 
     # Step 4: Assemble result
-    result = build_verification_result(
+    return build_verification_result(
         statement, llm_response, above_threshold, all_results, threshold
     )
-
-    # Step 5: If LLM found no DB match, try web research
-    if enable_research and result["verdikt"] == "Nedostatok dát":
-        return _try_research_fallback(statement, llm_client, result)
-
-    return result

@@ -35,26 +35,15 @@ def get_all_videos():
     results = []
     for path in VIDEO_UPLOAD_DIR.iterdir():
         if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
-            item = VideoListItem(
-                filename=path.name,
-                video_url=f"/api/video/file/{path.name}",
-                size_bytes=path.stat().st_size,
-            )
-            # Load analysis from sidecar JSON if it exists
             sidecar = VIDEO_UPLOAD_DIR / f"{path.name}.json"
-            if sidecar.is_file():
-                try:
-                    data = json.loads(sidecar.read_text(encoding="utf-8"))
-                    item.job_id = data.get("job_id")
-                    item.status = data.get("status")
-                    item.transcript = data.get("transcript")
-                    item.extracted_statements = data.get("extracted_statements", [])
-                    item.verified_statements = data.get("verified_statements", [])
-                    item.video_duration_seconds = data.get("video_duration_seconds")
-                    item.processing_time_seconds = data.get("processing_time_seconds")
-                except Exception:
-                    pass
-            results.append(item)
+            results.append(
+                VideoListItem(
+                    filename=path.name,
+                    video_url=f"/api/video/file/{path.name}",
+                    size_bytes=path.stat().st_size,
+                    has_analysis=sidecar.is_file(),
+                )
+            )
     return results
 
 
@@ -97,9 +86,22 @@ async def analyze_video(
             raise HTTPException(400, "participants must be valid JSON")
 
     # Save uploaded file
+    # Save uploaded file with original name
     VIDEO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    video_filename = f"{uuid.uuid4().hex}{suffix}"
-    video_path = VIDEO_UPLOAD_DIR / video_filename
+    original_name = Path(file.filename or f"video{suffix}").name
+    # Sanitize: keep only the filename part, no path traversal
+    original_name = Path(original_name).name
+    video_path = VIDEO_UPLOAD_DIR / original_name
+
+    # Handle duplicate filenames by appending _1, _2, etc.
+    if video_path.exists():
+        stem = video_path.stem
+        counter = 1
+        while video_path.exists():
+            video_path = VIDEO_UPLOAD_DIR / f"{stem}_{counter}{suffix}"
+            counter += 1
+
+    video_filename = video_path.name
 
     content = await file.read()
     if len(content) > MAX_VIDEO_SIZE_MB * 1024 * 1024:
@@ -140,6 +142,33 @@ def get_job_status(job_id: str):
         statements_total=job.get("statements_total"),
         statements_verified=job.get("statements_verified"),
         error_message=job.get("error_message"),
+    )
+
+
+@router.get("/video/analysis/{filename}", response_model=VideoAnalysisResponse)
+def get_video_analysis(filename: str):
+    """Get the full analysis for a video by its filename (stable ID)."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(400, "Invalid filename")
+
+    sidecar = (VIDEO_UPLOAD_DIR / f"{filename}.json").resolve()
+    if not sidecar.is_relative_to(VIDEO_UPLOAD_DIR.resolve()):
+        raise HTTPException(400, "Invalid filename")
+    if not sidecar.is_file():
+        raise HTTPException(404, "Analysis not found for this video")
+
+    data = json.loads(sidecar.read_text(encoding="utf-8"))
+    if not data:
+        raise HTTPException(404, "Analysis data is empty")
+    return VideoAnalysisResponse(
+        job_id=data.get("job_id", ""),
+        status=data.get("status", "completed"),
+        video_url=f"/api/video/file/{filename}",
+        transcript=data.get("transcript"),
+        extracted_statements=data.get("extracted_statements", []),
+        verified_statements=data.get("verified_statements", []),
+        video_duration_seconds=data.get("video_duration_seconds"),
+        processing_time_seconds=data.get("processing_time_seconds"),
     )
 
 

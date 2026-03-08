@@ -6,10 +6,10 @@ from tqdm import tqdm
 import uuid
 
 # --- Configuration ---
-CSV_PATH = "../data/demagog_vyroky_2026-01-25.csv"  # Replace with your actual CSV file path
+CSV_PATH = "../data/demagog_vyroky_2026-03-08.csv"  # Replace with your actual CSV file path
 QDRANT_URL = "http://13.48.59.38:6333"  # Your remote Qdrant instance
 # QDRANT_URL = ":memory:"  # For local testing, replace with your remote URL when deploying
-COLLECTION_NAME = "test_1"
+COLLECTION_NAME = "test_3"
 BATCH_SIZE = 32  # Adjust based on your GPU/RAM capacity
 
 # 1. Load the Data

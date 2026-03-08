@@ -327,9 +327,9 @@ bez konkrétneho faktického jadra
 - "Rozvrátili ste celé zdravotníctvo" → NEEXTRAHUJ — vágne obvinenie bez \
 špecifikácie čo, kedy, ako
 
-AK SI NIE SI ISTÝ, či tvrdenie je overiteľné — EXTRAHUJ ho. Je lepšie mať \
-o jedno tvrdenie navyše než premeškať dôležité faktické tvrdenie. Následná \
-verifikácia odfiltruje neoveriteľné tvrdenia.
+AK SI NIE SI ISTÝ, či tvrdenie je overiteľné — NEEXTRAHUJ ho. Kvalita má \
+prednosť pred kvantitou. Je lepšie vynechať hraničné tvrdenie než zahltiť \
+výstup neoveriteľnými alebo vágnymi výpoveďami.
 
 === ÚPLNOSŤ A KONTEXT TVRDENIA ===
 

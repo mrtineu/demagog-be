@@ -15,12 +15,32 @@ from backend.models_video import (
     VerifiedStatement,
 )
 from backend.services import job_store
-from backend.services.video_analysis_service import process_video_analysis, process_youtube_analysis
-from backend.services.youtube_service import validate_youtube_url
+from backend.services.video_analysis_service import process_video_analysis
 
 router = APIRouter(prefix="/api", tags=["video"])
 
 ALLOWED_EXTENSIONS = {".mp4", ".mkv", ".avi", ".mov", ".webm", ".mp3", ".wav", ".ogg"}
+
+
+@router.get("/videos", response_model=list[VideoAnalysisResponse])
+def get_all_videos():
+    """Return all video analysis jobs stored in the database."""
+    all_jobs = job_store.get_all_jobs()
+    results = []
+    for jid, job in all_jobs.items():
+        results.append(
+            VideoAnalysisResponse(
+                job_id=jid,
+                status=job["status"],
+                transcript=job.get("transcript"),
+                extracted_statements=job.get("extracted_statements", []),
+                verified_statements=job.get("verified_statements", []),
+                video_duration_seconds=job.get("video_duration_seconds"),
+                processing_time_seconds=job.get("processing_time_seconds"),
+                error_message=job.get("error_message"),
+            )
+        )
+    return results
 
 
 @router.post("/video/analyze", response_model=JobProgress)
@@ -63,46 +83,6 @@ async def analyze_video(
         process_video_analysis,
         job_id,
         video_path,
-        verification_mode,
-        similarity_threshold,
-        language,
-    )
-
-    return JobProgress(job_id=job_id, status=JobStatus.pending)
-
-
-@router.post("/video/analyze-youtube", response_model=JobProgress)
-async def analyze_youtube(
-    background_tasks: BackgroundTasks,
-    youtube_url: str = Form(...),
-    verification_mode: str = Form("db_only"),
-    similarity_threshold: float = Form(0.6),
-    language: str = Form("sk"),
-):
-    """Start analysis pipeline for a YouTube video URL.
-
-    Downloads audio from YouTube, then runs the same transcription
-    and verification pipeline as /video/analyze.
-
-    Returns immediately with a job_id for polling progress.
-    """
-    url = youtube_url.strip()
-    if not validate_youtube_url(url):
-        raise HTTPException(
-            400,
-            "Invalid YouTube URL. Supported formats: "
-            "youtube.com/watch?v=..., youtu.be/..., youtube.com/shorts/...",
-        )
-
-    if verification_mode not in ("db_only", "full"):
-        raise HTTPException(400, f"Invalid verification_mode: {verification_mode}")
-
-    job_id = job_store.create_job()
-
-    background_tasks.add_task(
-        process_youtube_analysis,
-        job_id,
-        url,
         verification_mode,
         similarity_threshold,
         language,

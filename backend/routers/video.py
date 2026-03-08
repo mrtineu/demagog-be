@@ -65,6 +65,7 @@ async def analyze_video(
     verification_mode: str = Form("db_only"),
     similarity_threshold: float = Form(0.6),
     language: str = Form("sk"),
+    participants: str = Form(""),
 ):
     """Upload a video and start the analysis pipeline.
 
@@ -78,6 +79,22 @@ async def analyze_video(
     # Validate verification mode
     if verification_mode not in ("db_only", "full"):
         raise HTTPException(400, f"Invalid verification_mode: {verification_mode}")
+
+    # Parse participants (optional JSON string)
+    parsed_participants: list[dict] | None = None
+    if participants and participants.strip():
+        try:
+            parsed_participants = json.loads(participants)
+            if not isinstance(parsed_participants, list):
+                raise HTTPException(400, "participants must be a JSON array")
+            for p in parsed_participants:
+                if not isinstance(p, dict) or not p.get("name"):
+                    raise HTTPException(
+                        400,
+                        "Each participant must have at least a 'name' field",
+                    )
+        except json.JSONDecodeError:
+            raise HTTPException(400, "participants must be valid JSON")
 
     # Save uploaded file
     VIDEO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -102,6 +119,7 @@ async def analyze_video(
         verification_mode,
         similarity_threshold,
         language,
+        parsed_participants,
     )
 
     return JobProgress(job_id=job_id, status=JobStatus.pending)

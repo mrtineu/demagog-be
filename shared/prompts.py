@@ -316,11 +316,54 @@ Progresívneho Slovenska v roku 2023 cez nastrčených influencerov."
 
 === IDENTIFIKÁCIA REČNÍKOV ===
 
-Pokús sa identifikovať rečníka podľa:
-1. Explicitné oslovenia ("Pán minister...", "Pani poslankyňa...")
-2. Sebapredstavenie ("Ja ako predseda vlády...")
-3. Kontextové indikátory
-Ak rečníka nevieš identifikovať, použi null.
+Identifikácia rečníkov je DÔLEŽITÁ časť analýzy. Pokús sa identifikovať \
+rečníka KAŽDÉHO tvrdenia. Použi null IBA ak neexistuje ŽIADNY náznak \
+kto hovorí.
+
+STRATÉGIE IDENTIFIKÁCIE (používaj v tomto poradí):
+
+1. EXPLICITNÉ OSLOVENIA v prepise:
+   - "Pán minister Kamenický..." → nasledujúci rečník je Kamenický
+   - "Pani poslankyňa Kolíková..." → nasledujúci rečník je Kolíková
+   - "Pán predseda..." → rečník je predseda (doplň meno ak je známe)
+   POZOR: Oslovenie typicky uvádza INÉ osoby — rečník oslovuje niekoho \
+iného. Rozlišuj kto hovorí a o kom hovorí.
+
+2. SEBAPREDSTAVENIE A SEBAREFERENCIE:
+   - "Ja ako predseda vlády..." → rečník je predseda vlády
+   - "Keď som bol ministrom..." → rečník je bývalý minister
+   - "NAŠA strana navrhla..." → rečník patrí k strane, ktorú menuje
+   - "My v SaS sme..." → rečník je člen SaS
+
+3. VZORY TELEVÍZNYCH DISKUSIÍ:
+   a) MODERÁTOR/KA:
+      - Kladie otázky ("Ako vysvetlíte...?", "Čo si o tom myslíte?")
+      - Predstavuje hostí ("Vítam pána ministra...")
+      - Uvádza témy ("Poďme k téme...")
+      - Prerušuje a usmerňuje diskusiu
+   b) HOSŤ/POLITIK:
+      - Odpovedá na otázky
+      - Obhajuje svoju pozíciu
+      - Útočí na oponentov
+      - Uvádza štatistiky a fakty
+
+4. SLEDOVANIE STRIEDANIA REČNÍKOV:
+   - V dialógu sa rečníci striedajú — ak segment A je otázka a segment B \
+je odpoveď, sú od RÔZNYCH rečníkov
+   - Ak rečník v segmente 5 je identifikovaný ako "Kollár" a segmenty \
+6-8 pokračujú v tom istom argumente bez zmeny, sú pravdepodobne \
+tiež od "Kollár"
+   - Zmena témy, tónu alebo prechod z odpovede na otázku signalizuje \
+zmenu rečníka
+
+5. KONTEXTOVÁ PROPAGÁCIA:
+   - Ak identifikuješ rečníka v jednom segmente, použi tú istú identitu \
+pre nasledujúce segmenty, AŽ KÝM niečo nesignalizuje zmenu rečníka
+   - Ak rečník odkazuje na "môj kolega z vlády" a predtým bolo jasné že \
+hovorí poslanec opozície, ide o inú osobu
+
+DÔLEŽITÉ: Ak si 70%+ istý kto hovorí, UVEĎ meno. Null použi len pri \
+skutočnej neistote (pod 50%).
 
 === MAPOVANIE NA ČASOVÉ ZNAČKY ===
 
@@ -342,3 +385,52 @@ Odpovedz VÝHRADNE ako JSON pole objektov:
 
 Ak v prepise nie sú žiadne overiteľné faktické tvrdenia, vráť prázdne pole [].
 """
+
+
+def build_extraction_prompt(participants: list[dict] | None = None) -> str:
+    """Build the extraction system prompt, optionally enriched with participant info.
+
+    Args:
+        participants: Optional list of dicts with keys 'name' and optionally
+                     'role' (e.g. 'moderátor', 'hosť') and 'party' (political party).
+
+    Returns:
+        The full system prompt string.
+    """
+    if not participants:
+        return EXTRACTION_SYSTEM_PROMPT
+
+    lines = [
+        "\n=== ZNÁMI ÚČASTNÍCI DISKUSIE ===\n",
+        "V tejto diskusii vystupujú nasledujúci účastníci:\n",
+    ]
+    for p in participants:
+        name = p.get("name", "")
+        role = p.get("role", "")
+        party = p.get("party", "")
+        parts = [f"- {name}"]
+        if role:
+            parts.append(f"({role})")
+        if party:
+            parts.append(f"— {party}")
+        lines.append(" ".join(parts))
+
+    lines.append(
+        "\nPOUŽI tieto mená pri identifikácii rečníkov. "
+        "Každé tvrdenie by malo byť priradené jednému z týchto účastníkov, "
+        "pokiaľ je to možné určiť z kontextu prepisu."
+    )
+
+    participant_block = "\n".join(lines)
+
+    # Insert participant block before the response format section
+    marker = "=== FORMÁT ODPOVEDE ==="
+    if marker in EXTRACTION_SYSTEM_PROMPT:
+        idx = EXTRACTION_SYSTEM_PROMPT.index(marker)
+        return (
+            EXTRACTION_SYSTEM_PROMPT[:idx]
+            + participant_block + "\n\n"
+            + EXTRACTION_SYSTEM_PROMPT[idx:]
+        )
+
+    return EXTRACTION_SYSTEM_PROMPT + participant_block

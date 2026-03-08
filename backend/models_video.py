@@ -107,13 +107,7 @@ class VideoListItem(BaseModel):
     filename: str
     video_url: str
     size_bytes: int
-    job_id: Optional[str] = None
-    status: Optional[str] = None
-    transcript: Optional[Transcript] = None
-    extracted_statements: list[ExtractedStatement] = Field(default_factory=list)
-    verified_statements: list[VerifiedStatement] = Field(default_factory=list)
-    video_duration_seconds: Optional[float] = None
-    processing_time_seconds: Optional[float] = None
+    has_analysis: bool = False
 
 
 class VideoAnalysisResponse(BaseModel):

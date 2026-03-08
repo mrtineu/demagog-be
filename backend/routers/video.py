@@ -35,26 +35,15 @@ def get_all_videos():
     results = []
     for path in VIDEO_UPLOAD_DIR.iterdir():
         if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS:
-            item = VideoListItem(
-                filename=path.name,
-                video_url=f"/api/video/file/{path.name}",
-                size_bytes=path.stat().st_size,
-            )
-            # Load analysis from sidecar JSON if it exists
             sidecar = VIDEO_UPLOAD_DIR / f"{path.name}.json"
-            if sidecar.is_file():
-                try:
-                    data = json.loads(sidecar.read_text(encoding="utf-8"))
-                    item.job_id = data.get("job_id")
-                    item.status = data.get("status")
-                    item.transcript = data.get("transcript")
-                    item.extracted_statements = data.get("extracted_statements", [])
-                    item.verified_statements = data.get("verified_statements", [])
-                    item.video_duration_seconds = data.get("video_duration_seconds")
-                    item.processing_time_seconds = data.get("processing_time_seconds")
-                except Exception:
-                    pass
-            results.append(item)
+            results.append(
+                VideoListItem(
+                    filename=path.name,
+                    video_url=f"/api/video/file/{path.name}",
+                    size_bytes=path.stat().st_size,
+                    has_analysis=sidecar.is_file(),
+                )
+            )
     return results
 
 
@@ -122,6 +111,31 @@ def get_job_status(job_id: str):
         statements_total=job.get("statements_total"),
         statements_verified=job.get("statements_verified"),
         error_message=job.get("error_message"),
+    )
+
+
+@router.get("/video/analysis/{filename}", response_model=VideoAnalysisResponse)
+def get_video_analysis(filename: str):
+    """Get the full analysis for a video by its filename (stable ID)."""
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(400, "Invalid filename")
+
+    sidecar = (VIDEO_UPLOAD_DIR / f"{filename}.json").resolve()
+    if not sidecar.is_relative_to(VIDEO_UPLOAD_DIR.resolve()):
+        raise HTTPException(400, "Invalid filename")
+    if not sidecar.is_file():
+        raise HTTPException(404, "Analysis not found for this video")
+
+    data = json.loads(sidecar.read_text(encoding="utf-8"))
+    return VideoAnalysisResponse(
+        job_id=data.get("job_id", ""),
+        status=data.get("status", "completed"),
+        video_url=f"/api/video/file/{filename}",
+        transcript=data.get("transcript"),
+        extracted_statements=data.get("extracted_statements", []),
+        verified_statements=data.get("verified_statements", []),
+        video_duration_seconds=data.get("video_duration_seconds"),
+        processing_time_seconds=data.get("processing_time_seconds"),
     )
 
 
